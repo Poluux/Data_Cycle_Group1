@@ -70,19 +70,8 @@ def ingest_price_history(portfolio, bronze_path):
                 continue
             
             df = df.reset_index()
-            
             df["Ticker"] = ticker
-            df = df.rename(columns={
-                "Date": "calendar",
-                "Open": "open",
-                "High": "high",
-                "Low": "low",
-                "Close": "close",
-                "Volume": "volume",
-                "Adj Close": "adj_close"
-            })
-
-            df = df.drop(columns=["Dividends", "Stock Splits"], errors="ignore")
+            df["ingestion_date"] = datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S')
             
             # Save to Bronze layer
             today_date = datetime.datetime.now().strftime('%Y-%m-%d')

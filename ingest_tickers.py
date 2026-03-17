@@ -29,12 +29,11 @@ def ingest_stocks_master(portfolio, bronze_path):
             data = {
                 'ticker': ticker,
                 
-                # With null handling
-                'company_name': info.get('longName') or info.get('shortName') or ticker, 
-                'sector': info.get('sector') or 'Sector not specified',
-                'industry': info.get('industry') or 'Industry not specified',
-                'currency': info.get('currency') or 'Currency unknown',
-                'exchange': info.get('exchange') or 'Exchange unknown',
+                'company_name': info.get('longName') or info.get('shortName'), 
+                'sector': info.get('sector'),
+                'industry': info.get('industry'),
+                'currency': info.get('currency'),
+                'exchange': info.get('exchange'),
                 'ingestion_date': datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S')
             }
             results.append(data)

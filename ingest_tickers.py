@@ -2,6 +2,7 @@ import yfinance as yf
 import pandas as pd
 import os
 import datetime
+from encryption import encrypt_table
 import sys
 
 portfolio = ['AMZN', 'MSFT', 'NVDA']
@@ -41,6 +42,8 @@ def ingest_stocks_master(portfolio, bronze_path):
         df = pd.DataFrame(results)
         today_date = datetime.datetime.now().strftime('%Y-%m-%d')
         file_name = f"stocks_master_{today_date}.csv"
+        
+        df = encrypt_table(df) # Encryption of the table
         df.to_csv(f"{path}/{file_name}", index=False)
         print(f"Tickers saved in {path}/{file_name}")
     else:
@@ -71,13 +74,18 @@ def ingest_price_history(portfolio, bronze_path, period):
             df = df.reset_index()
             df["Ticker"] = ticker
             df["ingestion_date"] = datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S')
+          
+            # Save to Bronze layer
+            today_date = datetime.datetime.now().strftime('%Y-%m-%d')
+            file_name = f"price_history_{ticker}_{today_date}.csv"
             
+            df = encrypt_table(df) # Encryption
             df.to_csv(f"{path}/{file_name}", index=False)
             print(f"- {ticker} price history saved in {path}/{file_name}")
                 
         except Exception as e:
             print(f"- {ticker} error: {e}")
-
+        
 if __name__ == "__main__":
     period = sys.argv[1] if len(sys.argv) > 1 else "1d"
     include_stocks_master = "--stocks-master" in sys.argv

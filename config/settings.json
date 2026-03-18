@@ -1,0 +1,14 @@
+{
+    "portfolio": ["AMZN", "MSFT", "NVDA"],
+    "paths": {
+        "bronze": "../data/bronze",
+        "silver": "../data/silver",
+        "gold": "../data/gold"
+    },
+    "columns": {
+        "date": "date",  
+        "ticker": "ticker",
+        "target_close": "close",
+        "numeric_fields": ["open", "high", "low", "close", "adj_close", "volume", "dividends", "stock_splits"]
+    }
+}

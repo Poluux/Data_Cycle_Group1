@@ -3,6 +3,7 @@ certifi==2026.2.25
 cffi==2.0.0
 charset-normalizer==3.4.4
 cryptography==46.0.5
+cryptography-fernet==0.1.0
 curl_cffi==0.13.0
 frozendict==2.4.7
 idna==3.11

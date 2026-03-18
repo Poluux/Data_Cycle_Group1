@@ -6,18 +6,28 @@ import pandas as pd
 import os
 import datetime
 from pathlib import Path
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from encryption import encrypt_table
 
-with open('../config/settings.json') as f:
+config_path = os.path.join(base_dir, 'config', 'settings.json')
+with open(config_path) as f:
     config = json.load(f)
     
 portfolio = config['portfolio']
-bronze_path = Path(config['paths']['bronze'])
+bronze_path = Path(base_dir) / config['paths']['bronze']
 
 def ingest_stocks_master(portfolio, bronze_path):
     # Directory to save files
-    path = f'{bronze_path}/equity_funds'
+    path = Path(f'{bronze_path}/equity_funds')
     os.makedirs(path, exist_ok=True)
+
+    today_date = datetime.datetime.now().strftime('%Y-%m-%d')
+    file_name = f"stocks_master_{today_date}.csv"
+
+    if (path / file_name).exists():
+        print(f"- stocks_master already ingested today, skipping")
+        return
 
     print("Download tickers from Yahoo Finance")
     results = []
@@ -66,7 +76,7 @@ def ingest_stocks_master(portfolio, bronze_path):
         print("No tickers to save")
         
 def ingest_price_history(portfolio, bronze_path, period):
-    path = f'{bronze_path}/price_history'
+    path = Path(f'{bronze_path}/price_history')
     os.makedirs(path, exist_ok=True)
 
     print("Download price history from Yahoo Finance")
@@ -75,6 +85,11 @@ def ingest_price_history(portfolio, bronze_path, period):
     ingestion_timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S')
     
     for ticker in portfolio:
+        file_name = f"price_history_{ticker}_{today_date}.csv"
+
+        if (path / file_name).exists():
+            print(f"- {ticker} already ingested today, skipping")
+            continue
         try:
             dat = yf.Ticker(ticker)
             df = dat.history(period=period, auto_adjust=False)

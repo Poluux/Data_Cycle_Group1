@@ -1,13 +1,18 @@
+import sys
+import os
 import json
 import pandas as pd
 from pathlib import Path
+base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from encryption import decrypt_table, encrypt_table
 
-with open('../config/settings.json') as f:
+config_path = os.path.join(base_dir, 'config', 'settings.json')
+with open(config_path) as f:
     config = json.load(f)
     
-bronze_dir = Path(config['paths']['bronze'])
-silver_dir = Path(config['paths']['silver'])
+bronze_dir = Path(base_dir) / config['paths']['bronze']
+silver_dir = Path(base_dir) / config['paths']['silver']
 date_col = config['columns']['date']
 ticker_col = config['columns']['ticker']
 close_col = config['columns']['target_close']

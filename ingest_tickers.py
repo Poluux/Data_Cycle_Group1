@@ -3,13 +3,12 @@ import pandas as pd
 import os
 import datetime
 from encryption import encrypt_table
+import sys
 
-# Tickers list (Added examples of equities, funds, tickers from other sectors, fake tickers...)
 portfolio = ['AMZN', 'MSFT', 'NVDA']
 bronze_path = './data/bronze'
 
 def ingest_stocks_master(portfolio, bronze_path):
-    # Directory to save files
     path = f'{bronze_path}/equity_funds'
     os.makedirs(path, exist_ok=True)
 
@@ -18,19 +17,15 @@ def ingest_stocks_master(portfolio, bronze_path):
     for ticker in portfolio:
         try:
             dat = yf.Ticker(ticker)
-            
             info = dat.info
 
-            # Validate that the ticker exists or has data
             if not info or (info.get('longName') is None and info.get('shortName') is None):
                 print(f"- {ticker} doesn't exist or doesn't have data")
                 continue
             
-            # Extract fields for the table 'stocks_master'
             data = {
                 'ticker': ticker,
-                
-                'company_name': info.get('longName') or info.get('shortName'), 
+                'company_name': info.get('longName') or info.get('shortName'),
                 'sector': info.get('sector'),
                 'industry': info.get('industry'),
                 'currency': info.get('currency'),
@@ -43,8 +38,6 @@ def ingest_stocks_master(portfolio, bronze_path):
         except Exception as e:
             print(f"- {ticker} error: {e}")
         
-    # Save to Bronze layer
-    # It creates a different file each day. To not overwrite, the file has the date in the name
     if results:
         df = pd.DataFrame(results)
         today_date = datetime.datetime.now().strftime('%Y-%m-%d')
@@ -56,25 +49,32 @@ def ingest_stocks_master(portfolio, bronze_path):
     else:
         print("No tickers to save")
         
-def ingest_price_history(portfolio, bronze_path):
-    # Directory to save files
+def ingest_price_history(portfolio, bronze_path, period):
     path = f'{bronze_path}/price_history'
     os.makedirs(path, exist_ok=True)
 
-    print("Download price history from Yahoo Finance")
+    print(f"Download price history from Yahoo Finance (period: {period})")
     for ticker in portfolio:
         try:
-            dat = yf.Ticker(ticker)
-            df = dat.history(period="10y", auto_adjust=False)
+            # Check if file already exists for today
+            today_date = datetime.datetime.now().strftime('%Y-%m-%d')
+            file_name = f"price_history_{ticker}_{today_date}.csv"
             
-            if (df.empty):
+            if os.path.exists(f"{path}/{file_name}"):
+                print(f"- {ticker} already ingested today, skipping")
+                continue
+
+            dat = yf.Ticker(ticker)
+            df = dat.history(period=period, auto_adjust=False)
+            
+            if df.empty:
                 print(f"- {ticker} doesn't have price history data")
                 continue
             
             df = df.reset_index()
             df["Ticker"] = ticker
             df["ingestion_date"] = datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S')
-            
+          
             # Save to Bronze layer
             today_date = datetime.datetime.now().strftime('%Y-%m-%d')
             file_name = f"price_history_{ticker}_{today_date}.csv"
@@ -87,5 +87,10 @@ def ingest_price_history(portfolio, bronze_path):
             print(f"- {ticker} error: {e}")
         
 if __name__ == "__main__":
-    ingest_stocks_master(portfolio, bronze_path)
-    ingest_price_history(portfolio, bronze_path)
+    period = sys.argv[1] if len(sys.argv) > 1 else "1d"
+    include_stocks_master = "--stocks-master" in sys.argv
+
+    if include_stocks_master:
+        ingest_stocks_master(portfolio, bronze_path)
+        
+    ingest_price_history(portfolio, bronze_path, period)

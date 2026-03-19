@@ -50,12 +50,11 @@ def process_stocks_master():
     df['exchange'] = df['exchange'].fillna('Unknown')
     df['ingestion_date'] = pd.to_datetime(df['ingestion_date'], format='%Y-%m-%d %H-%M-%S', errors='coerce')
     
-    # Save to Silver with the same date in the name.
-    file_name = f"stocks_master_clean_{date_part}.csv"
+    # Save to Silver with the same date in the name. Use parquet for better performance.
+    file_name = f"stocks_master_clean_{date_part}.parquet"
     save_path = silver_path / file_name
     
-    df = encrypt_table(df)
-    df.to_csv(save_path.resolve(), index=False)
+    df.to_parquet(save_path.resolve(), index=False)
     
     print(f"Data processed in {silver_path}/{file_name}")
     
@@ -84,8 +83,16 @@ def process_price_history():
     df.columns = df.columns.str.lower().str.replace(' ', '_')
     
     if date_col in df.columns:
-        df[date_col] = pd.to_datetime(df[date_col], utc=True).dt.date
-    
+        temp_date = pd.to_datetime(df[date_col], utc=True)
+        
+        # Add new date columns
+        df['year'] = temp_date.dt.year
+        df['month'] = temp_date.dt.month
+        df['quarter'] = temp_date.dt.quarter
+        df['day_of_week'] = temp_date.dt.day_name()
+        
+        df[date_col] = temp_date.dt.date
+
     if ticker_col in df.columns:
         df[ticker_col] = df[ticker_col].astype(str).str.upper().str.strip()
         
@@ -93,21 +100,32 @@ def process_price_history():
     for col in cols_to_convert:
         df[col] = pd.to_numeric(df[col], errors='coerce')
     
+    if 'dividends' in df.columns:
+        df['has_dividend'] = df['dividends'] > 0
+    
+    if 'stock_splits' in df.columns:
+        df['has_split'] = df['stock_splits'] > 0
+    
+    # Additional metrics: intraday volatility, session change, session change percentage
+    if set(['high', 'low', 'open', 'close']).issubset(df.columns):
+        df['intraday_volatility'] = df['high'] - df['low']
+        df['session_change'] = df['close'] - df['open']
+        df['session_change_pct'] = np.where(df['open'] != 0, (df['session_change'] / df['open']) * 100, 0.0)
+    
     if close_col in df.columns:
         df = df.dropna(subset=[close_col])
-    
+        
     if date_col in df.columns and ticker_col in df.columns:    
         df = df.drop_duplicates(subset=[ticker_col, date_col], keep='last').copy()
         df = df.sort_values(by=[ticker_col, date_col], ascending=[True, True])
     else:
         print(f"Warning: columns {date_col} or {ticker_col} not found")
     
-    # Save all data to a single file
-    file_name = "price_history_all.csv"
+    # Save all data to a single file. Use parquet for better performance.
+    file_name = "price_history_all.parquet"
     save_path = silver_path / file_name
     
-    df = encrypt_table(df)
-    df.to_csv(save_path, index=False)
+    df.to_parquet(save_path, index=False)
     
     print(f"Data processed and saved in {save_path.resolve()} (Total rows: {len(df)})")
     

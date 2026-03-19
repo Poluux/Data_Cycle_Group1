@@ -18,15 +18,16 @@ portfolio = config['portfolio']
 bronze_path = Path(base_dir) / config['paths']['bronze']
 
 def ingest_stocks_master(portfolio, bronze_path):
-    # Directory to save files
-    path = Path(f'{bronze_path}/equity_funds')
+    current_month = datetime.datetime.now().strftime('%Y-%m')
+    path = Path(bronze_path) / 'equity_funds' / current_month
+
     os.makedirs(path, exist_ok=True)
 
     today_date = datetime.datetime.now().strftime('%Y-%m-%d')
     file_name = f"stocks_master_{today_date}.csv"
 
     if (path / file_name).exists():
-        print(f"- stocks_master already ingested today, skipping")
+        print(f"- stocks_master: already ingested today, skipping Bronze ingestion")
         return
 
     print("Download tickers from Yahoo Finance")
@@ -56,7 +57,7 @@ def ingest_stocks_master(portfolio, bronze_path):
                 'ingestion_date': ingestion_timestamp
             }
             results.append(data)
-            print(f"- {ticker} processed")
+            print(f"- {ticker} ingested successfully")
                 
         except Exception as e:
             print(f"- {ticker} error: {e}")
@@ -65,22 +66,19 @@ def ingest_stocks_master(portfolio, bronze_path):
     # It creates a different file each day. To not overwrite, the file has the date in the name
     if results:
         df = pd.DataFrame(results)
-        today_date = datetime.datetime.now().strftime('%Y-%m-%d')
-        file_name = f"stocks_master_{today_date}.csv"
-        
         df = encrypt_table(df) 
-        save_path = f"{path}/{file_name}"
+        save_path = path / file_name
         df.to_csv(save_path, index=False)
-        print(f"Tickers saved in {path}/{file_name}")
+        print(f"- stocks_master: saved in {save_path}")
     else:
-        print("No tickers to save")
+        print("- stocks_master: no tickers to save")
         
 def ingest_price_history(portfolio, bronze_path, period):
-    path = Path(f'{bronze_path}/price_history')
+    current_month = datetime.datetime.now().strftime('%Y-%m')
+    path = Path(bronze_path) / 'price_history' / current_month
     os.makedirs(path, exist_ok=True)
 
     print("Download price history from Yahoo Finance")
-    
     today_date = datetime.datetime.now().strftime('%Y-%m-%d')
     ingestion_timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S')
     
@@ -88,7 +86,7 @@ def ingest_price_history(portfolio, bronze_path, period):
         file_name = f"price_history_{ticker}_{today_date}.csv"
 
         if (path / file_name).exists():
-            print(f"- {ticker} already ingested today, skipping")
+            print(f"- {ticker}: already ingested today, skipping")
             continue
         try:
             dat = yf.Ticker(ticker)
@@ -103,11 +101,10 @@ def ingest_price_history(portfolio, bronze_path, period):
             df["ingestion_date"] = ingestion_timestamp
             
             file_name = f"price_history_{ticker}_{today_date}.csv"
-            save_path = f"{path}/{file_name}"
-            
+            save_path = path / file_name
             df = encrypt_table(df)
             df.to_csv(save_path, index=False)
-            print(f"- {ticker} price history saved in {save_path}")
+            print(f"- {ticker}: price history saved in {save_path}")
                 
         except Exception as e:
             print(f"- {ticker} error: {e}")

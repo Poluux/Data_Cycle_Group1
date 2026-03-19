@@ -1,7 +1,9 @@
+import datetime
 import sys
 import os
 import json
 import pandas as pd
+import numpy as np
 from pathlib import Path
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -20,13 +22,14 @@ numeric_cols = config['columns']['numeric_fields']
 
 def process_stocks_master():
     print("Process latest stocks_master data")
-    bronze_path = bronze_dir/'equity_funds'
+    current_month = datetime.datetime.now().strftime('%Y-%m')
+    bronze_path = bronze_dir/'equity_funds' / current_month
     silver_path = silver_dir/'equity_funds'
     silver_path.mkdir(parents=True, exist_ok=True)
     
     files = sorted(list(bronze_path.glob('stocks_master_*.csv')))
     if not files:
-        print("Couldn't find any files in Bronze for stocks_master")
+        print("- stocks_master: no files found in Bronze to process")
         return
     
     # Sort alphabetically to get the latest file, because it has the date in the name.
@@ -50,24 +53,24 @@ def process_stocks_master():
     df['exchange'] = df['exchange'].fillna('Unknown')
     df['ingestion_date'] = pd.to_datetime(df['ingestion_date'], format='%Y-%m-%d %H-%M-%S', errors='coerce')
     
-    # Save to Silver with the same date in the name.
-    file_name = f"stocks_master_clean_{date_part}.csv"
+    # Save to Silver with the same date in the name. Use parquet for better performance.
+    file_name = f"clean_stocks_master_{date_part}.parquet"
     save_path = silver_path / file_name
     
-    df = encrypt_table(df)
-    df.to_csv(save_path.resolve(), index=False)
+    df.to_parquet(save_path.resolve(), index=False)
     
-    print(f"Data processed in {silver_path}/{file_name}")
+    print(f"- stocks_master: processed data saved in {silver_path}")
     
 def process_price_history():
     print("Process price_history data of each ticker")
-    bronze_path = bronze_dir/'price_history'
+    current_month = datetime.datetime.now().strftime('%Y-%m')
+    bronze_path = bronze_dir/'price_history' / current_month
     silver_path = silver_dir/'price_history'
     silver_path.mkdir(parents=True, exist_ok=True)
     
-    files = list(bronze_path.glob('price_history_*.csv'))
+    files = list((bronze_dir / 'price_history').rglob('*.csv'))
     if not files:
-        print("Couldn't find any files in Bronze for price_history")
+        print("- price_history: no files found in Bronze to process")
         return
     
     # Concatenate the info of each ticker to a single dataframe
@@ -84,8 +87,16 @@ def process_price_history():
     df.columns = df.columns.str.lower().str.replace(' ', '_')
     
     if date_col in df.columns:
-        df[date_col] = pd.to_datetime(df[date_col], utc=True).dt.date
-    
+        temp_date = pd.to_datetime(df[date_col], utc=True)
+        
+        # Add new date columns
+        df['year'] = temp_date.dt.year
+        df['month'] = temp_date.dt.month
+        df['quarter'] = temp_date.dt.quarter
+        df['day_of_week'] = temp_date.dt.day_name()
+        
+        df[date_col] = temp_date.dt.date
+
     if ticker_col in df.columns:
         df[ticker_col] = df[ticker_col].astype(str).str.upper().str.strip()
         
@@ -93,24 +104,65 @@ def process_price_history():
     for col in cols_to_convert:
         df[col] = pd.to_numeric(df[col], errors='coerce')
     
+    if 'dividends' in df.columns:
+        df['has_dividend'] = df['dividends'] > 0
+    
+    if 'stock_splits' in df.columns:
+        df['has_split'] = df['stock_splits'] > 0
+    
+    # Additional metrics: intraday volatility, session change, session change percentage
+    if set(['high', 'low', 'open', 'close']).issubset(df.columns):
+        df['intraday_volatility'] = df['high'] - df['low']
+        df['session_change'] = df['close'] - df['open']
+        df['session_change_pct'] = np.where(df['open'] != 0, (df['session_change'] / df['open']) * 100, 0.0)
+    
     if close_col in df.columns:
         df = df.dropna(subset=[close_col])
-    
+        
     if date_col in df.columns and ticker_col in df.columns:    
         df = df.drop_duplicates(subset=[ticker_col, date_col], keep='last').copy()
         df = df.sort_values(by=[ticker_col, date_col], ascending=[True, True])
     else:
         print(f"Warning: columns {date_col} or {ticker_col} not found")
     
-    # Save all data to a single file
-    file_name = "price_history_all.csv"
-    save_path = silver_path / file_name
+    # Save data for each ticker. Use parquet for better performance.
+    processed_tickers = df[ticker_col].unique()
     
-    df = encrypt_table(df)
-    df.to_csv(save_path, index=False)
+    for ticker in processed_tickers:
+        df_new_data = df[df[ticker_col] == ticker]
+        
+        file_name = f"clean_price_history_{ticker}.parquet"
+        save_path = silver_path / file_name
+        
+        initial_rows = 0
+        
+        # If the file already exists, load it to combine with the new data
+        if save_path.exists():
+            df_old_history = pd.read_parquet(save_path)
+            initial_rows = len(df_old_history)
+            df_combined = pd.concat([df_old_history, df_new_data], ignore_index=True)
+            
+            # Delete duplicates if there are any today
+            df_combined = df_combined.drop_duplicates(subset=[ticker_col, date_col], keep='last')
+            df_combined = df_combined.sort_values(by=[ticker_col, date_col])
+        else:
+            df_combined = df_new_data
+        
+        added_rows = len(df_combined) - initial_rows
+        
+        if added_rows > 0:
+            df_combined.to_parquet(save_path, index=False)
+            print(f"- {ticker}: {added_rows} new rows added. (Total: {len(df_combined)})")
+        else:
+            print(f"- {ticker}: no new data found, skipping Silver update.")
+        
+    print(f"- price_history: Total data processed: {len(df)} rows. Process completed.")
     
-    print(f"Data processed and saved in {save_path.resolve()} (Total rows: {len(df)})")
+if __name__ == "__main__":  
+    period = sys.argv[1] if len(sys.argv) > 1 else "1d"
+    include_stocks_master = "--stocks-master" in sys.argv
     
-if __name__ == "__main__":
-    process_stocks_master()
+    if include_stocks_master:
+        process_stocks_master()
+        
     process_price_history()

@@ -92,6 +92,7 @@ def process_price_history():
         # Add new date columns
         df['year'] = temp_date.dt.year
         df['month'] = temp_date.dt.month
+        df['day'] = temp_date.dt.day
         df['quarter'] = temp_date.dt.quarter
         df['day_of_week'] = temp_date.dt.day_name()
         

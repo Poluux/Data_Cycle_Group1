@@ -247,7 +247,7 @@ def load_fact_technical_indicators():
         df = pd.read_parquet(file).sort_values(date_col)
         #df = decrypt_table(df)
 
-        # Calcul des indicateurs techniques
+        # Calculation of technical indicators
         df['SMA20'] = ta.sma(df['adj_close'], length=20)
         df['SMA50'] = ta.sma(df['adj_close'], length=50)
         df['RSI'] = ta.rsi(df['adj_close'], length=14)
@@ -260,13 +260,13 @@ def load_fact_technical_indicators():
 
         bb = ta.bbands(df['adj_close'])
 
-        # Protection contre KeyError : récupération dynamique des colonnes
+        # Protection against KeyError : dynamic retrieval of columns
         bb_cols = bb.columns
         df['BB_Upper'] = bb[bb_cols[0]] if len(bb_cols) > 0 else np.nan
         df['BB_Middle'] = bb[bb_cols[1]] if len(bb_cols) > 1 else np.nan
         df['BB_Lower'] = bb[bb_cols[2]] if len(bb_cols) > 2 else np.nan
 
-        # Filtrage après la dernière date insérée
+        # Filtering after last date inserted
         if last_date:
             df = df[pd.to_datetime(df[date_col]).dt.date > last_date]
 
@@ -277,16 +277,16 @@ def load_fact_technical_indicators():
         df['Ticker_FK'] = ticker_map[ticker]
         df['Date_FK'] = pd.to_datetime(df[date_col]).dt.date.map(date_map)
 
-        # Supprimer les lignes avec date manquante
+        # Drop lines with missing dates
         df = df.dropna(subset=['Date_FK'])
 
-        # Remplacer NaN des colonnes techniques par None pour SQL
+        # Replace NaN of technical columns by None for SQL
         technical_cols = ['SMA20', 'SMA50', 'RSI', 'ATR', 
                           'MACD', 'MACD_Signal', 'MACD_Histogram',
                           'BB_Upper', 'BB_Middle', 'BB_Lower']
         df[technical_cols] = df[technical_cols].where(pd.notnull(df[technical_cols]), None)
 
-        # Colonnes finales à insérer
+        # Final column to insert
         cols = ['Ticker_FK', 'Date_FK'] + technical_cols
         df = df[[c for c in cols if c in df.columns]]
 

@@ -34,10 +34,15 @@ def pipeline(period: str = "1d", include_stocks_master: bool = False):
         task_ingest_stocks_master()
     task_ingest_price_history(period)
 
-    # Silver — se lance après Bronze automatiquement
+    # Silver - launches automatically after Bronze
     if include_stocks_master:
         task_process_stocks_master()
     task_process_price_history()
+    
+    # Gold - launches automatically after Silver
+    """if include_stocks_master:
+        task_gold_stocks_master()
+    task_gold_price_history()"""
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

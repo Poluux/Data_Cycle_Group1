@@ -63,14 +63,21 @@ def process_stocks_master():
     
 def process_price_history():
     print("Process price_history data of each ticker")
-    current_month = datetime.datetime.now().strftime('%Y-%m')
-    bronze_path = bronze_dir/'price_history' / current_month
     silver_path = silver_dir/'price_history'
     silver_path.mkdir(parents=True, exist_ok=True)
     
-    files = list((bronze_dir / 'price_history').rglob('*.csv'))
+    silver_files = list(silver_path.glob('clean_price_history_*.parquet'))
+    today_date = datetime.datetime.now().strftime('%Y-%m-%d')
+    
+    # Process all data if Silver is empty, if else, only process today's data. 
+    if len(silver_files) == 0:
+        print("- price_history: Silver is empty. Running Full Historical Load...")
+        files = list((bronze_dir / 'price_history').rglob('*.csv'))
+    else:
+        files = list((bronze_dir / 'price_history').rglob(f'*_{today_date}.csv'))
+    
     if not files:
-        print("- price_history: no files found in Bronze to process")
+        print(f"- price_history: no files found in Bronze to process.")
         return
     
     # Concatenate the info of each ticker to a single dataframe
@@ -152,6 +159,7 @@ def process_price_history():
         added_rows = len(df_combined) - initial_rows
         
         if added_rows > 0:
+            df_combined = encrypt_table(df_combined.copy())
             df_combined.to_parquet(save_path, index=False)
             print(f"- {ticker}: {added_rows} new rows added. (Total: {len(df_combined)})")
         else:

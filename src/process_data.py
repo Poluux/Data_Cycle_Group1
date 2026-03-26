@@ -1,5 +1,6 @@
 import datetime
 import sys
+import pytz
 import os
 import json
 import pandas as pd
@@ -67,7 +68,8 @@ def process_price_history():
     silver_path.mkdir(parents=True, exist_ok=True)
     
     silver_files = list(silver_path.glob('clean_price_history_*.parquet'))
-    today_date = datetime.datetime.now().strftime('%Y-%m-%d')
+    ny_tz = pytz.timezone('US/Eastern')
+    today_date = datetime.datetime.now(ny_tz).strftime('%Y-%m-%d')
     
     # Process all data if Silver is empty, if else, only process today's data. 
     if len(silver_files) == 0:
@@ -101,7 +103,7 @@ def process_price_history():
     if ticker_col in df.columns:
         df[ticker_col] = df[ticker_col].astype(str).str.upper().str.strip()
         
-    cols_to_convert = numeric_cols
+    cols_to_convert = [c for c in numeric_cols if c in df.columns]
     for col in cols_to_convert:
         df[col] = pd.to_numeric(df[col], errors='coerce')
     
@@ -140,6 +142,7 @@ def process_price_history():
         # If the file already exists, load it to combine with the new data
         if save_path.exists():
             df_old_history = pd.read_parquet(save_path)
+            df_old_history = decrypt_table(df_old_history)
             initial_rows = len(df_old_history)
             df_combined = pd.concat([df_old_history, df_new_data], ignore_index=True)
             
@@ -161,7 +164,6 @@ def process_price_history():
     print(f"- price_history: Total data processed: {len(df)} rows. Process completed.")
     
 if __name__ == "__main__":  
-    period = sys.argv[1] if len(sys.argv) > 1 else "1d"
     include_stocks_master = "--stocks-master" in sys.argv
     
     if include_stocks_master:

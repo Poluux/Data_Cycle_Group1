@@ -96,13 +96,6 @@ def process_price_history():
     if date_col in df.columns:
         temp_date = pd.to_datetime(df[date_col], utc=True)
         
-        # Add new date columns
-        df['year'] = temp_date.dt.year
-        df['month'] = temp_date.dt.month
-        df['day'] = temp_date.dt.day
-        df['quarter'] = temp_date.dt.quarter
-        df['day_of_week'] = temp_date.dt.day_name()
-        
         df[date_col] = temp_date.dt.date
 
     if ticker_col in df.columns:

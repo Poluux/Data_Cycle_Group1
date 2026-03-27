@@ -155,7 +155,6 @@ def load_fact_yfinance():
     if not ingestion_date_id:
         raise ValueError(f"ingestionDate_FK introuvable dans dimDate pour {date.today()}")
 
-    # 🔥 CHANGED
     last_dates = get_last_date_per_ticker_fact()
 
     for file in files:
@@ -205,15 +204,18 @@ def load_fact_yfinance():
             'adj_close': 'AdjClose',
             'volume': 'Volume',
             'dividends': 'Dividends',
-            'stock_splits': 'StockSplits'
+            'stock_splits': 'StockSplits',
+            'intraday_volatility': 'intradayVolatility',
+            'session_change': 'sessionChange',
+            'session_change_pct': 'sessionChangePCT'
         })
 
         cols = ['Ticker_FK', 'TickerDate_FK', 'ingestionDate_FK',
                 'Open', 'High', 'Low', 'Close',
-                'AdjClose', 'Volume', 'Dividends', 'StockSplits']
+                'AdjClose', 'Volume', 'Dividends', 'StockSplits', 'intradyVolatility', 'sessionChange', 'sessionChangePCT']
         df = df[[c for c in cols if c in df.columns]]
 
-        # 🔥 ADDED
+        
         df = df.drop_duplicates()
         df = df.drop_duplicates(subset=['Ticker_FK', 'TickerDate_FK', 'ingestionDate_FK'])
 
@@ -237,7 +239,6 @@ def load_fact_technical_indicators():
 
     date_map = get_date_id_map()
 
-    # 🔥 CHANGED
     last_dates = get_last_date_per_ticker_ti()
 
     for file in files:
@@ -294,7 +295,6 @@ def load_fact_technical_indicators():
         cols = ['Ticker_FK', 'Date_FK'] + technical_cols
         df = df[[c for c in cols if c in df.columns]]
 
-        # 🔥 ADDED
         df = df.drop_duplicates()
         df = df.drop_duplicates(subset=['Ticker_FK', 'Date_FK'])
 

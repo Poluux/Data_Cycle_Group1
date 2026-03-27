@@ -58,6 +58,8 @@ def process_stocks_master():
     file_name = f"clean_stocks_master_{date_part}.parquet"
     save_path = silver_path / file_name
     
+    df = encrypt_table(df)
+    
     df.to_parquet(save_path.resolve(), index=False)
     
     print(f"- stocks_master: processed data saved in {silver_path}")

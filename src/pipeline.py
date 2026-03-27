@@ -9,6 +9,7 @@ sys.path.append(os.path.join(base_dir, 'src'))
 
 from ingest_tickers import ingest_stocks_master, ingest_price_history, portfolio, bronze_path
 from process_data import process_stocks_master, process_price_history
+from gold import load_dim_date, load_dim_ticker, load_fact_yfinance, load_fact_technical_indicators
 
 @task(name="Bronze - Stocks Master", retries=2, retry_delay_seconds=30)
 def task_ingest_stocks_master():
@@ -25,19 +26,37 @@ def task_process_stocks_master():
 @task(name="Silver - Price History", retries=1, retry_delay_seconds=30)
 def task_process_price_history():
     process_price_history()
+    
+@task(name="Gold - DimDate & DimTicker", retries=1, retry_delay_seconds=30)
+def task_gold_dims(include_stocks_master: bool):
+    load_dim_date()
+    if include_stocks_master:
+        load_dim_ticker()
+
+@task(name="Gold - Fact Tables", retries=1, retry_delay_seconds=30)
+def task_gold_facts():
+    # Methods check themselves the last inserted date and add the new rows automatically
+    load_fact_yfinance()
+    load_fact_technical_indicators()
 
 @flow(name="Medallion Pipeline", log_prints=True)
 def pipeline(period: str = "1d", include_stocks_master: bool = False):
+
+    full_run = period != "1d"
 
     # Bronze
     if include_stocks_master:
         task_ingest_stocks_master()
     task_ingest_price_history(period)
 
-    # Silver — se lance après Bronze automatiquement
+    # Silver - launches automatically after Bronze
     if include_stocks_master:
         task_process_stocks_master()
     task_process_price_history()
+    
+    # Gold - launches automatically after Silver
+    task_gold_dims(include_stocks_master)
+    task_gold_facts()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

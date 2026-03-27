@@ -1,6 +1,8 @@
 import json
 import sys
-
+import time
+import uuid
+import pytz
 import yfinance as yf
 import pandas as pd
 import os
@@ -18,12 +20,14 @@ portfolio = config['portfolio']
 bronze_path = Path(base_dir) / config['paths']['bronze']
 
 def ingest_stocks_master(portfolio, bronze_path):
-    current_month = datetime.datetime.now().strftime('%Y-%m')
+    # Get the current date in New York time
+    ny_tz = pytz.timezone('US/Eastern')
+    current_month = datetime.datetime.now(ny_tz).strftime('%Y-%m')
     path = Path(bronze_path) / 'equity_funds' / current_month
 
     os.makedirs(path, exist_ok=True)
 
-    today_date = datetime.datetime.now().strftime('%Y-%m-%d')
+    today_date = datetime.datetime.now(ny_tz).strftime('%Y-%m-%d')
     file_name = f"stocks_master_{today_date}.csv"
 
     if (path / file_name).exists():
@@ -33,13 +37,21 @@ def ingest_stocks_master(portfolio, bronze_path):
     print("Download tickers from Yahoo Finance")
     results = []
     
+    execution_id = str(uuid.uuid4())
+
     # Precalculate the ingestion timestamp to have the same value for all tickers
-    ingestion_timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S')
+    ingestion_timestamp = datetime.datetime.now(ny_tz).strftime('%Y-%m-%d %H-%M-%S')
     
     for ticker in portfolio:
         try:
             dat = yf.Ticker(ticker)
             info = dat.info
+            
+            # True raw / Save original data from API
+            raw_file_name = f"raw_info_{ticker}_{today_date}.json"
+            raw_save_path = path / raw_file_name
+            with open(raw_save_path, 'w', encoding='utf-8') as json_file:
+                json.dump(info, json_file, ensure_ascii=False, indent=4)
 
             # Validate that the ticker exists or has data
             if not info or (info.get('longName') is None and info.get('shortName') is None):
@@ -54,7 +66,8 @@ def ingest_stocks_master(portfolio, bronze_path):
                 'industry': info.get('industry'),
                 'currency': info.get('currency'),
                 'exchange': info.get('exchange'),
-                'ingestion_date': ingestion_timestamp
+                'ingestion_date': ingestion_timestamp,
+                'execution_id': execution_id
             }
             results.append(data)
             print(f"- {ticker} ingested successfully")
@@ -74,43 +87,59 @@ def ingest_stocks_master(portfolio, bronze_path):
         print("- stocks_master: no tickers to save")
         
 def ingest_price_history(portfolio, bronze_path, period):
-    current_month = datetime.datetime.now().strftime('%Y-%m')
+    ny_tz = pytz.timezone('US/Eastern')
+    current_month = datetime.datetime.now(ny_tz).strftime('%Y-%m')
     path = Path(bronze_path) / 'price_history' / current_month
     os.makedirs(path, exist_ok=True)
 
     print("Download price history from Yahoo Finance")
-    today_date = datetime.datetime.now().strftime('%Y-%m-%d')
-    ingestion_timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H-%M-%S')
+    today_date = datetime.datetime.now(ny_tz).strftime('%Y-%m-%d')
+    ingestion_timestamp = datetime.datetime.now(ny_tz).strftime('%Y-%m-%d %H-%M-%S')
+
+    execution_id = str(uuid.uuid4())
     
     for ticker in portfolio:
-        file_name = f"price_history_{ticker}_{today_date}.csv"
+        # Indicate if the file has the 10y histical data
+        if period in ['max', '10y']:
+            file_name = f"price_history_{ticker}_historical_{today_date}.csv"
+        else:
+            file_name = f"price_history_{ticker}_{today_date}.csv"
 
         if (path / file_name).exists():
             print(f"- {ticker}: already ingested today, skipping")
             continue
-        try:
-            dat = yf.Ticker(ticker)
-            df = dat.history(period=period, auto_adjust=False)
+
+        # Retry logic to handle network issues
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # Download price history from Yahoo Finance
+                dat = yf.Ticker(ticker)
+                df = dat.history(period=period, auto_adjust=False)
             
-            if (df.empty):
-                print(f"- {ticker} doesn't have price history data")
-                continue
-            
-            df = df.reset_index()
-            df["Ticker"] = ticker
-            df["ingestion_date"] = ingestion_timestamp
-            
-            file_name = f"price_history_{ticker}_{today_date}.csv"
-            save_path = path / file_name
-            df = encrypt_table(df)
-            df.to_csv(save_path, index=False)
-            print(f"- {ticker}: price history saved in {save_path}")
+                if (df.empty):
+                    print(f"- {ticker} doesn't have price history data")
+                    break
                 
-        except Exception as e:
-            print(f"- {ticker} error: {e}")
+                df = df.reset_index()
+                df["Ticker"] = ticker
+                df["ingestion_date"] = ingestion_timestamp
+                df["execution_id"] = execution_id
+                
+                save_path = path / file_name
+                df = encrypt_table(df)
+                df.to_csv(save_path, index=False)
+                print(f"- {ticker}: price history saved in {save_path}")
+                break
+                    
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    wait = 2 ** attempt 
+                    print(f"- {ticker} connection error. Retrying in {wait} seconds...")
+                    time.sleep(wait)
+                else:
+                    print(f"- {ticker} critical error after {max_retries} attempts: {e}")
     
-    
-        
 if __name__ == "__main__":
     period = sys.argv[1] if len(sys.argv) > 1 else "1d"
     include_stocks_master = "--stocks-master" in sys.argv

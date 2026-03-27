@@ -1,5 +1,6 @@
 import datetime
 import sys
+import pytz
 import os
 import json
 import pandas as pd
@@ -63,14 +64,22 @@ def process_stocks_master():
     
 def process_price_history():
     print("Process price_history data of each ticker")
-    current_month = datetime.datetime.now().strftime('%Y-%m')
-    bronze_path = bronze_dir/'price_history' / current_month
     silver_path = silver_dir/'price_history'
     silver_path.mkdir(parents=True, exist_ok=True)
     
-    files = list((bronze_dir / 'price_history').rglob('*.csv'))
+    silver_files = list(silver_path.glob('clean_price_history_*.parquet'))
+    ny_tz = pytz.timezone('US/Eastern')
+    today_date = datetime.datetime.now(ny_tz).strftime('%Y-%m-%d')
+    
+    # Process all data if Silver is empty, if else, only process today's data. 
+    if len(silver_files) == 0:
+        print("- price_history: Silver is empty. Running full load...")
+        files = list((bronze_dir / 'price_history').rglob('*.csv'))
+    else:
+        files = list((bronze_dir / 'price_history').rglob(f'*_{today_date}.csv'))
+    
     if not files:
-        print("- price_history: no files found in Bronze to process")
+        print(f"- price_history: no files found in Bronze to process.")
         return
     
     # Concatenate the info of each ticker to a single dataframe
@@ -89,19 +98,12 @@ def process_price_history():
     if date_col in df.columns:
         temp_date = pd.to_datetime(df[date_col], utc=True)
         
-        # Add new date columns
-        df['year'] = temp_date.dt.year
-        df['month'] = temp_date.dt.month
-        df['day'] = temp_date.dt.day
-        df['quarter'] = temp_date.dt.quarter
-        df['day_of_week'] = temp_date.dt.day_name()
-        
         df[date_col] = temp_date.dt.date
 
     if ticker_col in df.columns:
         df[ticker_col] = df[ticker_col].astype(str).str.upper().str.strip()
         
-    cols_to_convert = numeric_cols
+    cols_to_convert = [c for c in numeric_cols if c in df.columns]
     for col in cols_to_convert:
         df[col] = pd.to_numeric(df[col], errors='coerce')
     
@@ -140,6 +142,7 @@ def process_price_history():
         # If the file already exists, load it to combine with the new data
         if save_path.exists():
             df_old_history = pd.read_parquet(save_path)
+            df_old_history = decrypt_table(df_old_history)
             initial_rows = len(df_old_history)
             df_combined = pd.concat([df_old_history, df_new_data], ignore_index=True)
             
@@ -152,6 +155,7 @@ def process_price_history():
         added_rows = len(df_combined) - initial_rows
         
         if added_rows > 0:
+            df_combined = encrypt_table(df_combined.copy())
             df_combined.to_parquet(save_path, index=False)
             print(f"- {ticker}: {added_rows} new rows added. (Total: {len(df_combined)})")
         else:
@@ -160,7 +164,6 @@ def process_price_history():
     print(f"- price_history: Total data processed: {len(df)} rows. Process completed.")
     
 if __name__ == "__main__":  
-    period = sys.argv[1] if len(sys.argv) > 1 else "1d"
     include_stocks_master = "--stocks-master" in sys.argv
     
     if include_stocks_master:

@@ -10,6 +10,7 @@ base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from encryption import decrypt_table, encrypt_table
 
+
 config_path = os.path.join(base_dir, 'config', 'settings.json')
 with open(config_path) as f:
     config = json.load(f)
@@ -20,6 +21,7 @@ date_col = config['columns']['date']
 ticker_col = config['columns']['ticker']
 close_col = config['columns']['target_close']
 numeric_cols = config['columns']['numeric_fields']
+encrypted_columns = config['encryption']['encrypted_columns']
 
 def process_stocks_master():
     print("Process latest stocks_master data")
@@ -40,7 +42,7 @@ def process_stocks_master():
     
     df = pd.read_csv(latest_file)
     
-    df = decrypt_table(df)
+    df = decrypt_table(df, encrypted_columns)
     
     # Null handling, drop duplicates, string formatting, date to datetime, etc.
     df = df.dropna(subset=[ticker_col])
@@ -90,10 +92,11 @@ def process_price_history():
         all_dfs.append(df_temp)
     df = pd.concat(all_dfs, ignore_index=True)
     
-    df = decrypt_table(df)
+    df.columns = df.columns.str.lower().str.replace(' ', '_')
+    
+    df = decrypt_table(df, encrypted_columns)
     
     #  Drop duplicates, sort, date to datetime, numerical fields to numeric, string formatting, delete rows with null in 'close'...
-    df.columns = df.columns.str.lower().str.replace(' ', '_')
     
     if date_col in df.columns:
         temp_date = pd.to_datetime(df[date_col], utc=True)
@@ -142,7 +145,7 @@ def process_price_history():
         # If the file already exists, load it to combine with the new data
         if save_path.exists():
             df_old_history = pd.read_parquet(save_path)
-            df_old_history = decrypt_table(df_old_history)
+            df_old_history = decrypt_table(df_old_history, encrypted_columns)
             initial_rows = len(df_old_history)
             df_combined = pd.concat([df_old_history, df_new_data], ignore_index=True)
             
@@ -155,7 +158,7 @@ def process_price_history():
         added_rows = len(df_combined) - initial_rows
         
         if added_rows > 0:
-            df_combined = encrypt_table(df_combined.copy())
+            df_combined = encrypt_table(df_combined.copy(), encrypted_columns)
             df_combined.to_parquet(save_path, index=False)
             print(f"- {ticker}: {added_rows} new rows added. (Total: {len(df_combined)})")
         else:

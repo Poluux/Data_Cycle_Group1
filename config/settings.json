@@ -19,5 +19,26 @@
       "dividends",
       "stock_splits"
     ]
+  },
+  "encryption": {
+    "encrypted_columns": [
+      "ticker",
+      "date",
+      "open",
+      "close",
+      "high",
+      "low",
+      "volume",
+      "dividends",
+      "stock_splits",
+      "company_name",
+      "sector",
+      "industry",
+      "exchange",
+      "currency",
+      "intraday_volatility",
+      "session_change",
+      "session_change_pct"
+    ]
   }
 }

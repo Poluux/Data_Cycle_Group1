@@ -20,10 +20,16 @@ def decrypt_value(value):
     decrypted = fernet.decrypt(value)
     return decrypted.decode()
 
-def encrypt_table(df):
-    df_encrypted = df.map(encrypt_value)
+def encrypt_table(df, encrypted_columns=None):
+    df_encrypted = df.copy()
+    cols_to_encrypt = [c for c in encrypted_columns if c in df.columns] if encrypted_columns else df.columns
+    for col in cols_to_encrypt:
+        df_encrypted[col] = df_encrypted[col].map(encrypt_value)
     return df_encrypted
 
-def decrypt_table(df):
-    df_decrypted = df.map(decrypt_value)
+def decrypt_table(df, encrypted_columns=None):
+    df_decrypted = df.copy()
+    cols_to_decrypt = [c for c in encrypted_columns if c in df.columns] if encrypted_columns else df.columns
+    for col in cols_to_decrypt:
+        df_decrypted[col] = df_decrypted[col].map(decrypt_value)
     return df_decrypted

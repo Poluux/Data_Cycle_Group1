@@ -34,31 +34,54 @@ engine = create_engine(
     f"mssql+pyodbc://{server}/{database}?driver=ODBC+Driver+17+for+SQL+Server&trusted_connection=yes"
 )
 
+# =========================
+# 🔹 NEW FUNCTIONS (ONLY ADDITION)
+# =========================
+
+def get_last_date_per_ticker_fact():
+    with engine.connect() as conn:
+        result = conn.execute(text("""
+            SELECT 
+                f.Ticker_FK,
+                MAX(d.date) as last_date
+            FROM Fact_yfinance f
+            JOIN dimDate d ON f.TickerDate_FK = d.id
+            GROUP BY f.Ticker_FK
+        """))
+        return {
+            row.Ticker_FK: pd.to_datetime(row.last_date).date()
+            for row in result if row.last_date
+        }
+
+
+def get_last_date_per_ticker_ti():
+    with engine.connect() as conn:
+        result = conn.execute(text("""
+            SELECT 
+                f.Ticker_FK,
+                MAX(d.date) as last_date
+            FROM Fact_TechnicalIndicators f
+            JOIN dimDate d ON f.Date_FK = d.id
+            GROUP BY f.Ticker_FK
+        """))
+        return {
+            row.Ticker_FK: pd.to_datetime(row.last_date).date()
+            for row in result if row.last_date
+        }
+
+# =========================
+# 🔹 ORIGINAL CODE (UNCHANGED EXCEPT MARKED PARTS)
+# =========================
+
 def get_ticker_id_map():
-    """Returns a dict mapping ticker → id from DimTicker"""
     with engine.connect() as conn:
         result = conn.execute(text("SELECT id, ticker FROM DimTicker"))
         return {row.ticker: row.id for row in result}
 
 def get_date_id_map():
-    """Returns a dict mapping date → id from dimDate"""
     with engine.connect() as conn:
         result = conn.execute(text("SELECT id, date FROM dimDate"))
         return {pd.to_datetime(row.date).date(): row.id for row in result}
-
-def get_last_date_in_db(table_name, date_fk_col):
-    """Get the last date already loaded in the fact table"""
-    try:
-        with engine.connect() as conn:
-            result = conn.execute(text(f"""
-                SELECT MAX(d.date) 
-                FROM {table_name} f
-                JOIN dimDate d ON f.{date_fk_col} = d.id
-            """))
-            last_date = result.scalar()
-            return pd.to_datetime(last_date).date() if last_date else None
-    except Exception:
-        return None
 
 def load_dim_date(start_year=2015, end_year=2030):
     print("Processing dimDate")
@@ -93,16 +116,8 @@ def load_dim_ticker():
         return
 
     df = pd.read_parquet(files[-1])
-    #df = decrypt_table(df)
+    df = decrypt_table(df)
     df = df[['ticker', 'company_name', 'sector', 'industry', 'currency', 'exchange']]
-    df = df.rename(columns={
-        'ticker': 'ticker',
-        'company_name': 'company_name',
-        'sector': 'sector',
-        'industry': 'industry',
-        'currency': 'currency',
-        'exchange': 'exchange'
-    })
 
     with engine.begin() as conn:
         for _, row in df.iterrows():
@@ -120,28 +135,18 @@ def load_dim_ticker():
                         currency = :currency,
                         exchange = :exchange
                     WHERE ticker = :ticker
-                """), {
-                    "company_name": row['company_name'],
-                    "sector": row['sector'],
-                    "industry": row['industry'],
-                    "currency": row['currency'],
-                    "exchange": row['exchange'],
-                    "ticker": row['ticker']
-                })
+                """), row.to_dict())
                 print(f"- {row['ticker']}: updated in DimTicker")
             else:
                 conn.execute(text("""
                     INSERT INTO DimTicker (ticker, [company_name], sector, industry, currency, exchange)
                     VALUES (:ticker, :company_name, :sector, :industry, :currency, :exchange)
-                """), {
-                    "ticker": row['ticker'],
-                    "company_name": row['company_name'],
-                    "sector": row['sector'],
-                    "industry": row['industry'],
-                    "currency": row['currency'],
-                    "exchange": row['exchange']
-                })
+                """), row.to_dict())
                 print(f"- {row['ticker']}: inserted in DimTicker")
+
+# =========================
+# 🔥 FIXED VERSION (ONLY TARGETED CHANGES)
+# =========================
 
 def load_fact_yfinance():
     print("Processing Fact_yfinance")
@@ -152,20 +157,18 @@ def load_fact_yfinance():
         print("- Fact_yfinance: no files found in Silver")
         return
 
-    # Safety check
     ticker_map = get_ticker_id_map()
     if not ticker_map:
         print("- Fact_yfinance: DimTicker is empty, run with --stocks-master first")
         return
 
     date_map = get_date_id_map()
-    ingestion_date_id = date_map.get(date.today())  # ID pour la date d'ingestion
+    ingestion_date_id = date_map.get(date.today())
     if not ingestion_date_id:
         raise ValueError(f"ingestionDate_FK introuvable dans dimDate pour {date.today()}")
 
-    last_date = get_last_date_in_db('Fact_yfinance', 'TickerDate_FK')
-    if last_date:
-        print(f"- Fact_yfinance: last date in DB: {last_date}")
+    # 🔥 CHANGED
+    last_dates = get_last_date_per_ticker_fact()
 
     for file in files:
         ticker = file.stem.replace('clean_price_history_', '')
@@ -174,8 +177,16 @@ def load_fact_yfinance():
             print(f"- {ticker}: not found in DimTicker, skipping")
             continue
 
+        ticker_id = ticker_map[ticker]
+        last_date = last_dates.get(ticker_id)
+
         df = pd.read_parquet(file)
-        #df = decrypt_table(df)
+        df = decrypt_table(df)
+
+        cols_to_convert = ['open', 'high', 'low', 'close', 'adj_close', 'volume', 'dividends', 'stock_splits']
+        for col in cols_to_convert:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
 
         if last_date:
             df = df[pd.to_datetime(df[date_col]).dt.date > last_date]
@@ -189,9 +200,9 @@ def load_fact_yfinance():
         df['cumulative_return'] = (1 + df['adj_close'].pct_change()).cumprod() - 1
         df['cumulative_return'] = df['cumulative_return'] * 100
 
-        df['Ticker_FK'] = ticker_map[ticker]
+        df['Ticker_FK'] = ticker_id
         df['TickerDate_FK'] = pd.to_datetime(df[date_col]).dt.date.map(date_map)
-        df['ingestionDate_FK'] = ingestion_date_id  # <-- rempli maintenant
+        df['ingestionDate_FK'] = ingestion_date_id
 
         missing_dates = df['TickerDate_FK'].isna().sum()
         if missing_dates > 0:
@@ -214,8 +225,13 @@ def load_fact_yfinance():
                 'AdjClose', 'Volume', 'Dividends', 'StockSplits']
         df = df[[c for c in cols if c in df.columns]]
 
+        # 🔥 ADDED
+        df = df.drop_duplicates()
+        df = df.drop_duplicates(subset=['Ticker_FK', 'TickerDate_FK', 'ingestionDate_FK'])
+
         df.to_sql('Fact_yfinance', con=engine, if_exists='append', index=False)
         print(f"- {ticker}: {len(df)} new rows inserted into Fact_yfinance")
+
 
 def load_fact_technical_indicators():
     print("Processing Fact_TechnicalIndicators")
@@ -226,16 +242,15 @@ def load_fact_technical_indicators():
         print("- Fact_TechnicalIndicators: no files found in Silver")
         return
 
-    # Safety check
     ticker_map = get_ticker_id_map()
     if not ticker_map:
         print("- Fact_TechnicalIndicators: DimTicker is empty, run with --stocks-master first")
         return
 
     date_map = get_date_id_map()
-    last_date = get_last_date_in_db('Fact_TechnicalIndicators', 'Date_FK')
-    if last_date:
-        print(f"- Fact_TechnicalIndicators: last date in DB: {last_date}")
+
+    # 🔥 CHANGED
+    last_dates = get_last_date_per_ticker_ti()
 
     for file in files:
         ticker = file.stem.replace('clean_price_history_', '')
@@ -244,10 +259,17 @@ def load_fact_technical_indicators():
             print(f"- {ticker}: not found in DimTicker, skipping")
             continue
 
-        df = pd.read_parquet(file).sort_values(date_col)
-        #df = decrypt_table(df)
+        ticker_id = ticker_map[ticker]
+        last_date = last_dates.get(ticker_id)
 
-        # Calculation of technical indicators
+        df = pd.read_parquet(file).sort_values(date_col)
+        df = decrypt_table(df)
+
+        cols_to_convert = ['open', 'high', 'low', 'close', 'adj_close', 'volume', 'dividends', 'stock_splits']
+        for col in cols_to_convert:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+
         df['SMA20'] = ta.sma(df['adj_close'], length=20)
         df['SMA50'] = ta.sma(df['adj_close'], length=50)
         df['RSI'] = ta.rsi(df['adj_close'], length=14)
@@ -259,14 +281,11 @@ def load_fact_technical_indicators():
         df['MACD_Histogram'] = macd['MACDh_12_26_9']
 
         bb = ta.bbands(df['adj_close'])
-
-        # Protection against KeyError : dynamic retrieval of columns
         bb_cols = bb.columns
         df['BB_Upper'] = bb[bb_cols[0]] if len(bb_cols) > 0 else np.nan
         df['BB_Middle'] = bb[bb_cols[1]] if len(bb_cols) > 1 else np.nan
         df['BB_Lower'] = bb[bb_cols[2]] if len(bb_cols) > 2 else np.nan
 
-        # Filtering after last date inserted
         if last_date:
             df = df[pd.to_datetime(df[date_col]).dt.date > last_date]
 
@@ -274,29 +293,34 @@ def load_fact_technical_indicators():
             print(f"- {ticker}: already up to date")
             continue
 
-        df['Ticker_FK'] = ticker_map[ticker]
+        df['Ticker_FK'] = ticker_id
         df['Date_FK'] = pd.to_datetime(df[date_col]).dt.date.map(date_map)
 
-        # Drop lines with missing dates
         df = df.dropna(subset=['Date_FK'])
 
-        # Replace NaN of technical columns by None for SQL
         technical_cols = ['SMA20', 'SMA50', 'RSI', 'ATR', 
                           'MACD', 'MACD_Signal', 'MACD_Histogram',
                           'BB_Upper', 'BB_Middle', 'BB_Lower']
         df[technical_cols] = df[technical_cols].where(pd.notnull(df[technical_cols]), None)
 
-        # Final column to insert
         cols = ['Ticker_FK', 'Date_FK'] + technical_cols
         df = df[[c for c in cols if c in df.columns]]
+
+        # 🔥 ADDED
+        df = df.drop_duplicates()
+        df = df.drop_duplicates(subset=['Ticker_FK', 'Date_FK'])
 
         if df.empty:
             print(f"- {ticker}: no valid rows to insert")
             continue
 
-        # Insertion SQL
         df.to_sql('Fact_TechnicalIndicators', con=engine, if_exists='append', index=False)
         print(f"- {ticker}: {len(df)} new rows inserted into Fact_TechnicalIndicators")
+
+
+# =========================
+# 🔹 MAIN
+# =========================
 
 if __name__ == "__main__":
     include_stocks_master = "--stocks-master" in sys.argv

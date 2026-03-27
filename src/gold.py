@@ -34,10 +34,6 @@ engine = create_engine(
     f"mssql+pyodbc://{server}/{database}?driver=ODBC+Driver+17+for+SQL+Server&trusted_connection=yes"
 )
 
-# =========================
-# 🔹 NEW FUNCTIONS (ONLY ADDITION)
-# =========================
-
 def get_last_date_per_ticker_fact():
     with engine.connect() as conn:
         result = conn.execute(text("""
@@ -68,10 +64,6 @@ def get_last_date_per_ticker_ti():
             row.Ticker_FK: pd.to_datetime(row.last_date).date()
             for row in result if row.last_date
         }
-
-# =========================
-# 🔹 ORIGINAL CODE (UNCHANGED EXCEPT MARKED PARTS)
-# =========================
 
 def get_ticker_id_map():
     with engine.connect() as conn:
@@ -143,10 +135,6 @@ def load_dim_ticker():
                     VALUES (:ticker, :company_name, :sector, :industry, :currency, :exchange)
                 """), row.to_dict())
                 print(f"- {row['ticker']}: inserted in DimTicker")
-
-# =========================
-# 🔥 FIXED VERSION (ONLY TARGETED CHANGES)
-# =========================
 
 def load_fact_yfinance():
     print("Processing Fact_yfinance")
@@ -316,11 +304,6 @@ def load_fact_technical_indicators():
 
         df.to_sql('Fact_TechnicalIndicators', con=engine, if_exists='append', index=False)
         print(f"- {ticker}: {len(df)} new rows inserted into Fact_TechnicalIndicators")
-
-
-# =========================
-# 🔹 MAIN
-# =========================
 
 if __name__ == "__main__":
     include_stocks_master = "--stocks-master" in sys.argv

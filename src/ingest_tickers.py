@@ -87,7 +87,7 @@ def ingest_stocks_master(portfolio, bronze_path):
         print("- stocks_master: no tickers to save")
         
 def ingest_price_history(portfolio, bronze_path, period):
-    ny_tz = pytz.timezone('US/Eastern')
+    ny_tz = pytz.timezone('America/Los_Angeles')
     current_month = datetime.datetime.now(ny_tz).strftime('%Y-%m')
     path = Path(bronze_path) / 'price_history' / current_month
     os.makedirs(path, exist_ok=True)

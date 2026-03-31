@@ -70,7 +70,7 @@ def process_price_history():
     silver_path.mkdir(parents=True, exist_ok=True)
     
     silver_files = list(silver_path.glob('clean_price_history_*.parquet'))
-    ny_tz = pytz.timezone('US/Eastern')
+    ny_tz = pytz.timezone('America/Los_Angeles')
     today_date = datetime.datetime.now(ny_tz).strftime('%Y-%m-%d')
     
     # Process all data if Silver is empty, if else, only process today's data. 

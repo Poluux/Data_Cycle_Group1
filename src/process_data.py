@@ -78,14 +78,22 @@ def process_price_history():
         print("- price_history: Silver is empty. Running full load...")
         files = list((bronze_dir / 'price_history').rglob('*.csv'))
     else:
-        files = list((bronze_dir / 'price_history').rglob(f'*_{today_date}.csv'))
+        files_today = list((bronze_dir / 'price_history').rglob(f'*_{today_date}.csv'))
+        files = [f for f in files_today if 'historical' not in f.name]
     
     if not files:
         print(f"- price_history: no files found in Bronze to process.")
         return
     
     # Concatenate the info of each ticker to a single dataframe
-    print(f'Processing {len(files)} price_history files...')
+    print(f'Processing {len(files)} price_history files from Bronze:')
+    for i, f in enumerate(files):
+        if i < 9:
+            print(f"  - {f.name}")
+        elif i == 9:
+            print(f"  - ... and {len(files) - 9} more files.")
+            break
+
     all_dfs = []
     for file in files:
         df_temp = pd.read_csv(file)
@@ -132,6 +140,8 @@ def process_price_history():
     
     # Save data for each ticker. Use parquet for better performance.
     processed_tickers = df[ticker_col].unique()
+
+    total_new_rows_saved = 0
     
     for ticker in processed_tickers:
         df_new_data = df[df[ticker_col] == ticker]
@@ -145,25 +155,34 @@ def process_price_history():
         if save_path.exists():
             df_old_history = pd.read_parquet(save_path)
             df_old_history = decrypt_table(df_old_history)
+            df_old_history[date_col] = pd.to_datetime(df_old_history[date_col], utc=True).dt.date
             initial_rows = len(df_old_history)
+
             df_combined = pd.concat([df_old_history, df_new_data], ignore_index=True)
-            
+
+            rows_before_cleaning = len(df_combined)
+
             # Delete duplicates if there are any today
             df_combined = df_combined.drop_duplicates(subset=[ticker_col, date_col], keep='last')
             df_combined = df_combined.sort_values(by=[ticker_col, date_col])
+
+            duplicates_cleaned = rows_before_cleaning - len(df_combined)
         else:
             df_combined = df_new_data
+            duplicates_cleaned = 0
         
         added_rows = len(df_combined) - initial_rows
         
         if added_rows > 0:
             df_combined = encrypt_table(df_combined.copy())
             df_combined.to_parquet(save_path, index=False)
-            print(f"- {ticker}: {added_rows} new rows added. (Total: {len(df_combined)})")
+            print(f"- {ticker}: {added_rows} new rows added, {duplicates_cleaned} duplicates cleaned. (Total: {len(df_combined)})")
+
+            total_new_rows_saved += added_rows
         else:
-            print(f"- {ticker}: no new data found, skipping Silver update.")
+            print(f"- {ticker}: no new data found, skipping Silver update. ({duplicates_cleaned} duplicates cleaned)")
         
-    print(f"- price_history: Total data processed: {len(df)} rows. Process completed.")
+    print(f"- price_history: Process completed. {total_new_rows_saved} total new rows saved to Silver. (Bronze rows read: {len(df)})")
     
 if __name__ == "__main__":  
     include_stocks_master = "--stocks-master" in sys.argv

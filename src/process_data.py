@@ -145,6 +145,9 @@ def process_price_history():
         if save_path.exists():
             df_old_history = pd.read_parquet(save_path)
             df_old_history = decrypt_table(df_old_history)
+        
+            df_old_history[date_col] = pd.to_datetime(df_old_history[date_col]).dt.date
+    
             initial_rows = len(df_old_history)
             df_combined = pd.concat([df_old_history, df_new_data], ignore_index=True)
             

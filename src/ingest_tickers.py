@@ -21,7 +21,7 @@ bronze_path = Path(base_dir) / config['paths']['bronze']
 
 def ingest_stocks_master(portfolio, bronze_path):
     # Get the current date in New York time
-    ny_tz = pytz.timezone('US/Eastern')
+    ny_tz = pytz.timezone('America/Los_Angeles')
     current_month = datetime.datetime.now(ny_tz).strftime('%Y-%m')
     path = Path(bronze_path) / 'equity_funds' / current_month
 

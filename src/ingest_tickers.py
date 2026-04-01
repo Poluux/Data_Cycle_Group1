@@ -103,7 +103,7 @@ def ingest_price_history(portfolio, bronze_path, period):
         if period in ['max', '10y']:
             file_name = f"price_history_{ticker}_historical_{today_date}.csv"
         else:
-            file_name = f"price_history_{ticker}_{today_date}.csv"
+            file_name = f"price_history_{ticker}_{period}_{today_date}.csv"
 
         if (path / file_name).exists():
             print(f"- {ticker}: already ingested today, skipping")

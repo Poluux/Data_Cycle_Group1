@@ -14,11 +14,10 @@ env_path = os.path.join(base_dir, 'src', '.env')
 load_dotenv(dotenv_path=env_path)
 server = os.getenv('SQL_SERVER')
 database = os.getenv('SQL_DATABASE')
-
 print(f"DEBUG - Connecting to Server: {server} | Database: {database}")
 
 if not server or not database:
-    raise ValueError("ERROR: Las variables SQL_SERVER o SQL_DATABASE están vacías. Revisa tu archivo src/.env")
+    raise ValueError("SQL_SERVER or SQL_DATABASE variables are empty. There should be a src/.env")
 
 engine = create_engine(
     f"mssql+pyodbc://{server}/{database}?driver=ODBC+Driver+17+for+SQL+Server&trusted_connection=yes"
@@ -26,17 +25,18 @@ engine = create_engine(
 
 print("Extracting data from Gold Layer...")
 
-# DB queries. Date, ticker, close price and daily % change
+# DB queries. Date, ticker, close price, daily % change and volume
 query = """
 SELECT 
     d.date, 
     t.ticker, 
     f.[Close],
-    f.sessionChangePCT
+    f.sessionChangePCT,
+    f.[volume]
 FROM Fact_yfinance f
 JOIN dimDate d ON f.TickerDate_FK = d.id
 JOIN DimTicker t ON f.Ticker_FK = t.id
-WHERE d.date >= '2023-01-01' -- Filtramos los últimos años para mayor claridad visual
+WHERE d.date >= '2023-01-01' 
 """
 
 df = pd.read_sql(query, engine)
@@ -63,8 +63,7 @@ plt.tight_layout()
 ts_path = os.path.join(reports_dir, 'time_series_plot.png')
 plt.savefig(ts_path)
 print(f"- Saved: {ts_path}")
-plt.show()
-
+# plt.show()
 
 # CORRELATION HEATMAP 
 
@@ -87,4 +86,28 @@ plt.tight_layout()
 heatmap_path = os.path.join(reports_dir, 'correlation_heatmap.png')
 plt.savefig(heatmap_path)
 print(f"- Saved: {heatmap_path}")
-plt.show()
+# plt.show()
+
+
+# TRADING VOLUME PLOT
+
+print("Generating Trading Volume Plot...")
+plt.figure(figsize=(14, 7))
+# Usamos un gráfico de líneas finas para el volumen temporal
+sns.lineplot(data=df, x='date', y='volume', hue='ticker', linewidth=1.5, alpha=0.8)
+
+# Styles of the chart
+plt.title('Trading Volume Over Time (2023 - Present)', fontsize=16, fontweight='bold')
+plt.xlabel('Date', fontsize=12)
+plt.ylabel('Volume (Number of Shares)', fontsize=12)
+plt.grid(True, linestyle='--', alpha=0.6)
+plt.legend(title='Ticker')
+plt.tight_layout()
+
+# Save and show
+vol_path = os.path.join(reports_dir, 'trading_volume_plot.png')
+plt.savefig(vol_path)
+print(f"- Saved: {vol_path}")
+# plt.show()
+
+print("All reports generated successfully.")

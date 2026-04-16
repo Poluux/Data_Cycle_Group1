@@ -25,17 +25,19 @@ engine = create_engine(
 
 print("Extracting data from Gold Layer...")
 
-# DB queries. Date, ticker, close price, daily % change and volume
+# DB queries. Date, ticker, close price, daily % change, volume and indicator
 query = """
 SELECT 
     d.date, 
     t.ticker, 
     f.[Close],
     f.sessionChangePCT,
-    f.[volume]
+    f.[volume],
+    ti.[SMA50]
 FROM Fact_yfinance f
 JOIN dimDate d ON f.TickerDate_FK = d.id
 JOIN DimTicker t ON f.Ticker_FK = t.id
+LEFT JOIN Fact_TechnicalIndicators ti ON ti.Date_FK = d.id AND ti.Ticker_FK = t.id
 WHERE d.date >= '2023-01-01' 
 """
 
@@ -64,6 +66,7 @@ ts_path = os.path.join(reports_dir, 'time_series_plot.png')
 plt.savefig(ts_path)
 print(f"- Saved: {ts_path}")
 # plt.show()
+
 
 # CORRELATION HEATMAP 
 
@@ -108,6 +111,27 @@ plt.tight_layout()
 vol_path = os.path.join(reports_dir, 'trading_volume_plot.png')
 plt.savefig(vol_path)
 print(f"- Saved: {vol_path}")
+# plt.show()
+
+
+# TECHNICAL INDICATORS PLOT
+
+print("Generating Technical Indicators Plot...")
+plt.figure(figsize=(14, 7))
+sns.lineplot(data=df, x='date', y='SMA50', hue='ticker', linewidth=2)
+
+# Styles of the chart
+plt.title('Technical Indicators: 50-Day Simple Moving Average (SMA)', fontsize=16, fontweight='bold')
+plt.xlabel('Date', fontsize=12)
+plt.ylabel('SMA 50 Value', fontsize=12)
+plt.grid(True, linestyle='--', alpha=0.6)
+plt.legend(title='Ticker')
+plt.tight_layout()
+
+# Save and show
+ind_path = os.path.join(reports_dir, 'technical_indicators_plot.png')
+plt.savefig(ind_path)
+print(f"- Saved: {ind_path}")
 # plt.show()
 
 print("All reports generated successfully.")

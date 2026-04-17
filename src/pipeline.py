@@ -10,6 +10,7 @@ sys.path.append(os.path.join(base_dir, 'src'))
 from ingest_tickers import ingest_stocks_master, ingest_price_history, portfolio, bronze_path
 from process_data import process_stocks_master, process_price_history
 from gold import load_dim_date, load_dim_ticker, load_fact_yfinance, load_fact_technical_indicators
+from convert_db_to_csv import export_sql_to_csv
 
 @task(name="Bronze - Stocks Master", retries=2, retry_delay_seconds=30)
 def task_ingest_stocks_master():
@@ -39,6 +40,10 @@ def task_gold_facts():
     load_fact_yfinance()
     load_fact_technical_indicators()
 
+@task(name="SAC - Convert Gold DB to csv", retries=1, retry_delay_seconds=30)
+def task_sac_dataConversion():
+    export_sql_to_csv()
+
 @flow(name="Medallion Pipeline", log_prints=True)
 def pipeline(period: str = "1d", include_stocks_master: bool = False):
 
@@ -57,6 +62,9 @@ def pipeline(period: str = "1d", include_stocks_master: bool = False):
     # Gold - launches automatically after Silver
     task_gold_dims(include_stocks_master)
     task_gold_facts()
+
+    # SAC - data conversion
+    task_sac_dataConversion()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

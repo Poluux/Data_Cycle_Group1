@@ -1,26 +1,45 @@
 import pandas as pd
 import pyodbc
+import os
+from dotenv import load_dotenv
+from prefect import flow, task
 
-server = 'WIN-F77IL0T7HKL\\MSSQLSERVER01'
-database = 'DataCycleProject'
+load_dotenv()
 
-tables = ["dimDate", "dimTicker", "Fact_Prediction", "Fact_TechnicalIndicators", "Fact_yfinance"]
+SERVER = os.getenv('SQL_SERVER')
+DATABASE = os.getenv('SQL_DATABASE')
 
-conn = pyodbc.connect(
-    f'DRIVER={{SQL Server}};'
-    f'SERVER={server};'
-    f'DATABASE={database};'
-    f'Trusted_Connection=yes;'
-)
+TABLES = os.getenv('SQL_TABLES').split(',')
 
-for table in tables:
+def extract_table(table): 
+    conn = pyodbc.connect(
+        f'DRIVER={{SQL Server}};'
+        f'SERVER={SERVER};'
+        f'DATABASE={DATABASE};'
+        f'Trusted_Connection=yes;'
+    )
+
     query = f"SELECT * FROM {table}"
-
     df = pd.read_sql(query, conn)
+    conn.close()
+    
+    return df
 
-    file_path = f"dados_sac_{table}.csv"
-    df.to_csv(f"data/gold/{file_path}", index=False)
+def save_csv(df, table):
+    os.makedirs("data/gold", exist_ok=True)
+    
+    file_path = f"data/gold/data_sac_{table}.csv"
+    
+    if not df.empty:
+        df.to_csv(file_path, index=False)
+        print(f"{table} saved successfully")
+    else:
+        print(f"{table} is empty — table not updated")
 
-    print(f"CSV da tabela {table} atualizada com sucesso!")
+def export_sql_to_csv():
+    for table in TABLES:
+        df = extract_table(table)
+        save_csv(df, table)
 
-conn.close()
+if __name__ == "__main__":
+    export_sql_to_csv()

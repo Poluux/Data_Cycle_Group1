@@ -10,6 +10,7 @@ sys.path.append(os.path.join(base_dir, 'src'))
 from ingest_tickers import ingest_stocks_master, ingest_price_history, portfolio, bronze_path
 from process_data import process_stocks_master, process_price_history
 from gold import load_dim_date, load_dim_ticker, load_fact_yfinance, load_fact_technical_indicators
+from knime_process_data import knime_process_stocks_master, knime_process_price_history, knime_process_predictions
 
 @task(name="Bronze - Stocks Master", retries=2, retry_delay_seconds=30)
 def task_ingest_stocks_master():
@@ -38,6 +39,18 @@ def task_gold_facts():
     # Methods check themselves the last inserted date and add the new rows automatically
     load_fact_yfinance()
     load_fact_technical_indicators()
+    
+@task(name="Knime - Stocks Master", retries=1, retry_delay_seconds=30)
+def task_knime_process_stocks_master():
+    knime_process_stocks_master()
+    
+@task(name="Knime - Price History", retries=1, retry_delay_seconds=30)
+def task_knime_process_price_history():
+    knime_process_price_history()
+    
+@task(name="Knime - Predictions", retries=1, retry_delay_seconds=30)
+def task_knime_process_predictions():
+    knime_process_predictions()
 
 @flow(name="Medallion Pipeline", log_prints=True)
 def pipeline(period: str = "1d", include_stocks_master: bool = False):
@@ -53,6 +66,14 @@ def pipeline(period: str = "1d", include_stocks_master: bool = False):
     if include_stocks_master:
         task_process_stocks_master()
     task_process_price_history()
+    
+    # Knime - decryption of silver data after Silver to process in Knime
+    if include_stocks_master:
+        task_knime_process_stocks_master()
+    task_knime_process_price_history()
+    
+    # Knime - launches Knime prediction process
+    task_knime_process_predictions()
     
     # Gold - launches automatically after Silver
     task_gold_dims(include_stocks_master)

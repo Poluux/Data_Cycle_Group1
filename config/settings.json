@@ -3,7 +3,9 @@
   "paths": {
     "bronze": "data/bronze",
     "silver": "data/silver",
-    "gold": "data/gold"
+    "gold": "data/gold",
+    "knime_silver": "data/knime_silver_decrypted",
+    "knime_api_url": "https://api.edu-hub.knime.com/deployments/rest:8f567b58-3aa0-43e3-b890-a9ffb52d47bf/execution?reset=false&timeout=-1"
   },
   "columns": {
     "date": "date",

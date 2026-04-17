@@ -76,7 +76,7 @@ if __name__ == "__main__":
     if args.serve:
         pipeline.serve(
             name="daily-medallion",
-            schedules=[CronSchedule(cron="0 22 * * 1-5", timezone="America/Los_Angeles")]
+            schedules=[CronSchedule(cron="43 2 * * 1-5", timezone="America/Los_Angeles")]
         )
     else:
         pipeline(period=args.period, include_stocks_master=args.stocks_master)

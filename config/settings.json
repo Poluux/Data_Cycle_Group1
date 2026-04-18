@@ -4,8 +4,10 @@
     "bronze": "data/bronze",
     "silver": "data/silver",
     "gold": "data/gold",
-    "knime_silver": "data/knime_silver_decrypted",
-    "knime_api_url": "https://api.edu-hub.knime.com/deployments/rest:8f567b58-3aa0-43e3-b890-a9ffb52d47bf/execution?reset=false&timeout=-1"
+    "knime_silver_process": "data/knime_silver_process",
+    "knime_api_url_AMZN": "https://api.edu-hub.knime.com/deployments/rest:531dabcb-18e7-42c5-8490-5b387d7b7e1a/execution?reset=false&timeout=-1",
+    "knime_api_url_MSFT": "https://api.edu-hub.knime.com/deployments/rest:b37d3fc2-d821-40dd-b2ee-1afde34f9746/execution?reset=false&timeout=-1",
+    "knime_api_url_NVDA": "https://api.edu-hub.knime.com/deployments/rest:4f607578-a76c-4fbc-a4bd-3b7adab586d3/execution?reset=false&timeout=-1"
   },
   "columns": {
     "date": "date",

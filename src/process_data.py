@@ -200,16 +200,16 @@ def process_price_history():
     total_final_rows = len(df)
     if total_final_rows > 0:
         penalization = (missing_days_corrected + total_duplicates_cleaned) / (total_final_rows + missing_days_corrected + total_duplicates_cleaned)
-        data_quality_score = max(0.0, 100.0 - (penalization * 100) - (api_error_rate * 100))
+        data_quality_score = max(0.0, 1.0 - penalization - api_error_rate)
     else:
-        data_quality_score = 100.0
+        data_quality_score = 1.0
 
     audit_data = pd.DataFrame({
         "Date": [today_date],
         "API_Error_Rate": [api_error_rate],
         "Missing_Days_Corrected": [missing_days_corrected],
         "Duplicates_Removed": [total_duplicates_cleaned],
-        "Data_Quality_Score": [round(data_quality_score, 2)]
+        "Data_Quality_Score": [round(data_quality_score, 4)]
     })
 
     gold_audit_path = Path(base_dir) / 'data' / 'gold' / 'ingest_audit.csv'

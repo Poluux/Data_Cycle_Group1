@@ -7,6 +7,7 @@ import datetime
 import pytz
 import subprocess
 import requests
+from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 from requests.auth import HTTPBasicAuth
 from pathlib import Path
@@ -29,6 +30,16 @@ output_dir.mkdir(parents=True, exist_ok=True)
 
 load_dotenv()
 
+sql_server = os.getenv('SQL_SERVER')
+database = os.getenv('SQL_DATABASE')
+
+if not sql_server or not database:
+    raise ValueError("SQL_SERVER and SQL_DATABASE must be set in .env file")
+
+engine = create_engine(
+    f"mssql+pyodbc://{sql_server}/{database}?driver=ODBC+Driver+17+for+SQL+Server&trusted_connection=yes"
+)
+
 def get_env(name: str) -> str:
     value = os.getenv(name)
     if value is None:
@@ -38,8 +49,6 @@ def get_env(name: str) -> str:
 
 knime_api_ID = get_env("KNIME_API_ID")
 knime_api_PWD = get_env("KNIME_API_PASSWORD")
-
-#auth = HTTPBasicAuth(knime_api_ID, knime_api_PWD)
 
 KNIME_APIS = {
     "AMZN": config["paths"]["knime_api_url_AMZN"],
@@ -130,6 +139,11 @@ def parse_knime_output(json_response: dict) -> pd.DataFrame:
     ]
 
     df = pd.DataFrame(rows_as_dicts)
+    
+    # add today date based on Los Angeles
+    los_angeles_tz = pytz.timezone('America/Los_Angeles')
+    today_la = datetime.datetime.now(los_angeles_tz).date()
+    df['date_of_processing'] = today_la
 
     return df
 
@@ -141,6 +155,63 @@ def save_encrypted(df: pd.DataFrame, ticker: str):
     df_encrypted.to_parquet(file_path, index=False)
 
     print(f"Saved encrypted predictions: {file_path}")
+    
+def get_ticker_id_map():
+    with engine.connect() as conn:
+        result = conn.execute(text("SELECT id, ticker FROM DimTicker"))
+        return {row.ticker: row.id for row in result}
+    
+def get_date_id_map():
+    with engine.connect() as conn:
+        result = conn.execute(text("SELECT id, date FROM dimDate"))
+        return {pd.to_datetime(row.date).date(): row.id for row in result}
+    
+def send_to_sqlDB():
+    print("Sending Predictions to SQL Database")
+    
+    files = list(output_dir.glob("encrypted_predictions_*.parquet"))
+    if not files:
+        print("- Send_to_DB: no files found in predictions folder")
+        return
+    
+    ticker_map = get_ticker_id_map()
+    if not ticker_map:
+        print("- Send_to_DB: DimTicker is emtpy, run with --stocks-master first")
+        return
+    
+    date_map = get_date_id_map()
+    
+    for file in files:
+        df = pd.read_parquet(file)
+        df = decrypt_table(df)
+        
+        ingestion_date = pd.to_datetime(df['date_of_processing'].iloc[0]).date()
+        ticker = df['Ticker-Of-Iteration'].iloc[0]
+        
+        if ticker not in ticker_map:
+            print(f"- {ticker}: not found in DimTicker, skipping")
+            continue
+        
+        ticker_id = ticker_map[ticker]
+        ingestion_date_id = date_map[ingestion_date]
+        
+        df['date'] = pd.to_datetime(df['date']).dt.date.map(date_map)
+        df['Prediction (close)'] = pd.to_numeric(df['Prediction (close)'], errors='coerce')
+        df['Ticker-Of-Iteration'] = ticker_id
+        df['date_of_processing'] = ingestion_date_id
+        
+        df = df.rename(columns={
+            'date': 'Date_FK',
+            'Prediction (close)': 'PredictedPrice',
+            'Ticker-Of-Iteration': 'Ticker_FK',
+            'date_of_processing': 'Ingestion_Date_FK',
+        })
+        
+        df.to_sql('Fact_Prediction', con=engine, if_exists='append', index=False)
+        print(f"- Send_to_DB: {ticker}: {len(df)} new rows inserted into Fact_Prediction")
+    
+    
         
 if __name__ == "__main__":    
-    knime_send_data_toAPI()
+   knime_send_data_toAPI()
+   send_to_sqlDB()

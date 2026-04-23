@@ -6,7 +6,7 @@ from sqlalchemy import create_engine
 from dotenv import load_dotenv
 
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-reports_dir = os.path.join(base_dir, 'reports')
+reports_dir = r"C:\Aquila_Alpha_Platform\Workspace_Advanced\Portfolio_Risk_Analytics"
 os.makedirs(reports_dir, exist_ok=True)
 
 # Connect to the SQL Server from gold layer
@@ -62,8 +62,9 @@ plt.legend(title='Ticker')
 plt.tight_layout()
 
 # Save and show
-ts_path = os.path.join(reports_dir, 'time_series_plot.png')
+ts_path = os.path.join(reports_dir, '2_Price_Evolution.png')
 plt.savefig(ts_path)
+plt.close()
 print(f"- Saved: {ts_path}")
 # plt.show()
 
@@ -86,8 +87,9 @@ plt.title('Correlation Heatmap: Daily Returns', fontsize=16, fontweight='bold')
 plt.tight_layout()
 
 # Save and show
-heatmap_path = os.path.join(reports_dir, 'correlation_heatmap.png')
+heatmap_path = os.path.join(reports_dir, '1_Correlation_Heatmap.png')
 plt.savefig(heatmap_path)
+plt.close()
 print(f"- Saved: {heatmap_path}")
 # plt.show()
 
@@ -108,8 +110,9 @@ plt.legend(title='Ticker')
 plt.tight_layout()
 
 # Save and show
-vol_path = os.path.join(reports_dir, 'trading_volume_plot.png')
+vol_path = os.path.join(reports_dir, '3_Trading_Volume.png')
 plt.savefig(vol_path)
+plt.close()
 print(f"- Saved: {vol_path}")
 # plt.show()
 
@@ -129,8 +132,9 @@ plt.legend(title='Ticker')
 plt.tight_layout()
 
 # Save and show
-ind_path = os.path.join(reports_dir, 'technical_indicators_plot.png')
+ind_path = os.path.join(reports_dir, '4_SMA50_Trend.png')
 plt.savefig(ind_path)
+plt.close()
 print(f"- Saved: {ind_path}")
 # plt.show()
 

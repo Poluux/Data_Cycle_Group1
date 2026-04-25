@@ -9,6 +9,7 @@ from pathlib import Path
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 from datetime import date
+from db_connection import get_engine
 
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -23,16 +24,13 @@ silver_dir = Path(base_dir) / config['paths']['silver']
 ticker_col = config['columns']['ticker']
 date_col = config['columns']['date']
 
-load_dotenv()
-server = os.getenv('SQL_SERVER')
-database = os.getenv('SQL_DATABASE')
+# Load depending on context of execution
+if os.getenv("RUNNING_IN_DOCKER"):
+    load_dotenv(".env",override=True)
+else:
+    load_dotenv(os.path.join(os.path.dirname(__file__), ".env.local"),override=True)
 
-if not server or not database:
-    raise ValueError("SQL_SERVER and SQL_DATABASE must be set in .env file")
-
-engine = create_engine(
-    f"mssql+pyodbc://{server}/{database}?driver=ODBC+Driver+17+for+SQL+Server&trusted_connection=yes"
-)
+engine = get_engine()
 
 def get_last_date_per_ticker_fact():
     with engine.connect() as conn:

@@ -84,12 +84,14 @@ if __name__ == "__main__":
     parser.add_argument("--period", default="1d")
     parser.add_argument("--stocks-master", action="store_true")
     parser.add_argument("--serve", action="store_true")
+    parser.add_argument("--cron", default="0 22 * * 1-5")
+    parser.add_argument("--timezone", default="America/Los_Angeles")
     args = parser.parse_args()
 
     if args.serve:
         pipeline.serve(
             name="daily-medallion",
-            schedules=[CronSchedule(cron="0 22 * * 1-5", timezone="America/Los_Angeles")]
+            schedules=[CronSchedule(cron=args.cron, timezone=args.timezone)]
         )
     else:
         pipeline(period=args.period, include_stocks_master=args.stocks_master)

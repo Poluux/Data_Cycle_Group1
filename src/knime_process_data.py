@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from requests.auth import HTTPBasicAuth
 from pathlib import Path
 from encryption import decrypt_table, encrypt_table
+from db_connection import get_engine
 
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -28,17 +29,13 @@ output_dir = Path(base_dir) / config['paths']['knime_silver_process'] / "predict
 knime_silver_process_dir.mkdir(parents=True, exist_ok=True)
 output_dir.mkdir(parents=True, exist_ok=True)
 
-load_dotenv()
+# Load depending on context of execution
+if os.getenv("RUNNING_IN_DOCKER"):
+    load_dotenv(".env",override=True)
+else:
+    load_dotenv(os.path.join(os.path.dirname(__file__), ".env.local"),override=True)
 
-sql_server = os.getenv('SQL_SERVER')
-database = os.getenv('SQL_DATABASE')
-
-if not sql_server or not database:
-    raise ValueError("SQL_SERVER and SQL_DATABASE must be set in .env file")
-
-engine = create_engine(
-    f"mssql+pyodbc://{sql_server}/{database}?driver=ODBC+Driver+17+for+SQL+Server&trusted_connection=yes"
-)
+engine = get_engine()
 
 def get_env(name: str) -> str:
     value = os.getenv(name)
@@ -207,8 +204,14 @@ def send_to_sqlDB():
             'date_of_processing': 'Ingestion_Date_FK',
         })
         
-        df.to_sql('Fact_Prediction', con=engine, if_exists='append', index=False)
-        print(f"- Send_to_DB: {ticker}: {len(df)} new rows inserted into Fact_Prediction")
+        try:
+            df.to_sql('Fact_Prediction', con=engine, if_exists='append', index=False)
+            print(f"- Send_to_DB: {ticker}: {len(df)} new rows inserted into Fact_Prediction")
+        except Exception as e:
+            if '2627' in str(e) or 'PRIMARY KEY' in str(e):
+                print(f"- {ticker}: already up to date, skipping")
+            else:
+                raise
     
     
         

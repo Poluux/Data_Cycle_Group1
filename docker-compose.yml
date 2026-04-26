@@ -1,7 +1,7 @@
 services:
 
   sqlserver:
-    build: ./sqlserver # ← build au lieu de image
+    build: ./sqlserver
     environment:
       SA_PASSWORD: ${SQL_PASSWORD}
       ACCEPT_EULA: "Y"

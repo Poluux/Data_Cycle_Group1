@@ -212,16 +212,14 @@ def process_price_history():
         "Data_Quality_Score": [round(data_quality_score, 4)]
     })
 
-    gold_audit_path = Path(base_dir) / 'data' / 'gold' / 'ingest_audit.csv'
-    gold_audit_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    if gold_audit_path.exists():
-        old_audit = pd.read_csv(gold_audit_path)
-        audit_data = pd.concat([old_audit, audit_data], ignore_index=True)
-        audit_data = audit_data.drop_duplicates(subset=["Date"], keep="last")
+    try:
+        from db_connection import get_engine
+        engine = get_engine()
         
-    audit_data.to_csv(gold_audit_path, index=False)
-    print(f"- Audit: ingest_audit.csv saved to {gold_audit_path}")
+        audit_data.to_sql('Fact_Audit', con=engine, if_exists='append', index=False)
+        print(f"- Audit: Pipeline health data saved to SQL (Fact_Audit) successfully.")
+    except Exception as e:
+        print(f"- Error saving audit to SQL: {e}")
     
 if __name__ == "__main__":  
     include_stocks_master = "--stocks-master" in sys.argv

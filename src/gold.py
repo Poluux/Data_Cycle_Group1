@@ -210,7 +210,7 @@ def load_fact_yfinance():
 
         cols = ['Ticker_FK', 'TickerDate_FK', 'ingestionDate_FK',
                 'Open', 'High', 'Low', 'Close',
-                'AdjClose', 'Volume', 'Dividends', 'StockSplits', 'intradyVolatility', 'sessionChange', 'sessionChangePCT']
+                'AdjClose', 'Volume', 'Dividends', 'StockSplits', 'intradayVolatility', 'sessionChange', 'sessionChangePCT']
         df = df[[c for c in cols if c in df.columns]]
 
         
@@ -249,8 +249,9 @@ def load_fact_technical_indicators():
         ticker_id = ticker_map[ticker]
         last_date = last_dates.get(ticker_id)
 
-        df = pd.read_parquet(file).sort_values(date_col)
+        df = pd.read_parquet(file)
         df = decrypt_table(df)
+        df = df.sort_values(date_col)
 
         cols_to_convert = ['open', 'high', 'low', 'close', 'adj_close', 'volume', 'dividends', 'stock_splits']
         for col in cols_to_convert:
@@ -269,9 +270,9 @@ def load_fact_technical_indicators():
 
         bb = ta.bbands(df['adj_close'])
         bb_cols = bb.columns
-        df['BB_Upper'] = bb[bb_cols[0]] if len(bb_cols) > 0 else np.nan
+        df['BB_Lower'] = bb[bb_cols[0]] if len(bb_cols) > 0 else np.nan
         df['BB_Middle'] = bb[bb_cols[1]] if len(bb_cols) > 1 else np.nan
-        df['BB_Lower'] = bb[bb_cols[2]] if len(bb_cols) > 2 else np.nan
+        df['BB_Upper'] = bb[bb_cols[2]] if len(bb_cols) > 2 else np.nan
 
         if last_date:
             df = df[pd.to_datetime(df[date_col]).dt.date > last_date]

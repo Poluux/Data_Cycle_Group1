@@ -61,6 +61,8 @@ services:
       - ./data:/app/data
       - ./reports:/app/reports
       - ./config:/app/config
+      - ./Aquila_Alpha_Platform/Workspace_Advanced/Portfolio_Risk_Analytics:/app/reports
+      - ./Aquila_Alpha_Platform/Workspace_Free:/app/dummy_free
     depends_on:
       sqlserver:
         condition: service_healthy
@@ -87,6 +89,8 @@ services:
       - ./data:/app/data
       - ./reports:/app/reports
       - ./config:/app/config
+      - ./Aquila_Alpha_Platform/Workspace_Advanced/Portfolio_Risk_Analytics:/app/reports
+      - ./Aquila_Alpha_Platform/Workspace_Free:/app/dummy_free
     depends_on:
       sqlserver:
         condition: service_healthy

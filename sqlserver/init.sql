@@ -230,3 +230,25 @@ GO
 
 ALTER TABLE [dbo].[Fact_TechnicalIndicators] CHECK CONSTRAINT [FK_Fact_TechnicalIndicators_dimTicker]
 GO
+
+USE [DataCycleProject]
+GO
+
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE TABLE [dbo].[Fact_Audit](
+    [id] [int] IDENTITY(1,1) NOT NULL,
+    [Date] [date] NULL,
+    [API_Error_Rate] [float] NULL,
+    [Missing_Days_Corrected] [int] NULL,
+    [Duplicates_Removed] [int] NULL,
+    [Data_Quality_Score] [float] NULL,
+ CONSTRAINT [PK_Fact_Audit] PRIMARY KEY CLUSTERED 
+(
+    [id] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO

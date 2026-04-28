@@ -15,7 +15,11 @@ services:
       - |
         /opt/mssql/bin/sqlservr &
         echo "Waiting for SQL Server to start..."
-        sleep 20
+        for i in $(seq 1 30); do
+          /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$SA_PASSWORD" -Q "SELECT 1" -No 2>/dev/null && break
+          echo "Attempt $i failed, retrying in 5s..."
+          sleep 5
+        done
         /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$SA_PASSWORD" -i /init.sql -No
         wait
     healthcheck:

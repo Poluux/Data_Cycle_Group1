@@ -98,6 +98,9 @@ def ingest_price_history(portfolio, bronze_path, period):
 
     execution_id = str(uuid.uuid4())
     
+    total_requests = len(portfolio)
+    failed_requests = 0
+    
     for ticker in portfolio:
         # Indicate if the file has the 10y histical data
         if period in ['max', '10y']:
@@ -111,6 +114,7 @@ def ingest_price_history(portfolio, bronze_path, period):
 
         # Retry logic to handle network issues
         max_retries = 3
+        success = False
         for attempt in range(max_retries):
             try:
                 # Download price history from Yahoo Finance
@@ -119,6 +123,7 @@ def ingest_price_history(portfolio, bronze_path, period):
             
                 if (df.empty):
                     print(f"- {ticker} doesn't have price history data")
+                    failed_requests += 1
                     break
                 
                 df = df.reset_index()
@@ -130,6 +135,7 @@ def ingest_price_history(portfolio, bronze_path, period):
                 df = encrypt_table(df)
                 df.to_csv(save_path, index=False)
                 print(f"- {ticker}: price history saved in {save_path}")
+                success = True
                 break
                     
             except Exception as e:
@@ -139,6 +145,12 @@ def ingest_price_history(portfolio, bronze_path, period):
                     time.sleep(wait)
                 else:
                     print(f"- {ticker} critical error after {max_retries} attempts: {e}")
+                    failed_requests += 1
+    
+    api_error_rate = failed_requests / total_requests if total_requests > 0 else 0.0
+    audit_temp_path = Path(bronze_path) / 'audit_temp.json'
+    with open(audit_temp_path, 'w') as f:
+        json.dump({"api_error_rate": api_error_rate}, f)
     
 if __name__ == "__main__":
     period = sys.argv[1] if len(sys.argv) > 1 else "1d"

@@ -12,6 +12,7 @@ from process_data import process_stocks_master, process_price_history
 from gold import load_dim_date, load_dim_ticker, load_fact_yfinance, load_fact_technical_indicators
 from knime_process_data import knime_send_data_toAPI, send_to_sqlDB
 from convert_db_to_csv import export_sql_to_csv
+from analysis_reports import generate_visual_reports
 
 @task(name="Bronze - Stocks Master", retries=2, retry_delay_seconds=30)
 def task_ingest_stocks_master():
@@ -52,6 +53,10 @@ def task_knime_send_to_DB():
 @task(name="SAC - Convert Gold DB to csv", retries=1, retry_delay_seconds=30)
 def task_sac_dataConversion():
     export_sql_to_csv()
+    
+@task(name="Reporting - Generate PNG Charts", retries=1, retry_delay_seconds=30)
+def task_generate_reports():
+    generate_visual_reports()
 
 @flow(name="Medallion Pipeline", log_prints=True)
 def pipeline(period: str = "1d", include_stocks_master: bool = False):
@@ -78,18 +83,23 @@ def pipeline(period: str = "1d", include_stocks_master: bool = False):
 
     # SAC - data conversion
     task_sac_dataConversion()
+    
+    # Reports - Generate python charts
+    task_generate_reports()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--period", default="1d")
     parser.add_argument("--stocks-master", action="store_true")
     parser.add_argument("--serve", action="store_true")
+    parser.add_argument("--cron", default="0 22 * * 1-5")
+    parser.add_argument("--timezone", default="America/Los_Angeles")
     args = parser.parse_args()
 
     if args.serve:
         pipeline.serve(
             name="daily-medallion",
-            schedules=[CronSchedule(cron="0 22 * * 1-5", timezone="America/Los_Angeles")]
+            schedules=[CronSchedule(cron=args.cron, timezone=args.timezone)]
         )
     else:
         pipeline(period=args.period, include_stocks_master=args.stocks_master)

@@ -69,6 +69,13 @@ def process_price_history():
     silver_path = silver_dir/'price_history'
     silver_path.mkdir(parents=True, exist_ok=True)
     
+    audit_temp_path = bronze_dir / 'audit_temp.json'
+    api_error_rate = 0.0
+    if audit_temp_path.exists():
+        with open(audit_temp_path, 'r') as f:
+            audit_temp = json.load(f)
+            api_error_rate = audit_temp.get("api_error_rate", 0.0)
+            
     silver_files = list(silver_path.glob('clean_price_history_*.parquet'))
     ny_tz = pytz.timezone('America/Los_Angeles')
     today_date = datetime.datetime.now(ny_tz).strftime('%Y-%m-%d')
@@ -129,8 +136,12 @@ def process_price_history():
         df['session_change'] = df['close'] - df['open']
         df['session_change_pct'] = np.where(df['open'] != 0, (df['session_change'] / df['open']) * 100, 0.0)
     
+    initial_rows_before_nulls = len(df)
+    
     if close_col in df.columns:
         df = df.dropna(subset=[close_col])
+    
+    missing_days_corrected = initial_rows_before_nulls - len(df)
         
     if date_col in df.columns and ticker_col in df.columns:    
         df = df.drop_duplicates(subset=[ticker_col, date_col], keep='last').copy()
@@ -142,7 +153,7 @@ def process_price_history():
     processed_tickers = df[ticker_col].unique()
 
     total_new_rows_saved = 0
-    
+    total_duplicates_cleaned = 0
     for ticker in processed_tickers:
         df_new_data = df[df[ticker_col] == ticker]
         
@@ -171,6 +182,8 @@ def process_price_history():
             df_combined = df_new_data
             duplicates_cleaned = 0
         
+        total_duplicates_cleaned += duplicates_cleaned
+        
         added_rows = len(df_combined) - initial_rows
         
         if added_rows > 0:
@@ -183,6 +196,30 @@ def process_price_history():
             print(f"- {ticker}: no new data found, skipping Silver update. ({duplicates_cleaned} duplicates cleaned)")
         
     print(f"- price_history: Process completed. {total_new_rows_saved} total new rows saved to Silver. (Bronze rows read: {len(df)})")
+    
+    total_final_rows = len(df)
+    if total_final_rows > 0:
+        penalization = (missing_days_corrected + total_duplicates_cleaned) / (total_final_rows + missing_days_corrected + total_duplicates_cleaned)
+        data_quality_score = max(0.0, 1.0 - penalization - api_error_rate)
+    else:
+        data_quality_score = 1.0
+
+    audit_data = pd.DataFrame({
+        "Date": [today_date],
+        "API_Error_Rate": [api_error_rate],
+        "Missing_Days_Corrected": [missing_days_corrected],
+        "Duplicates_Removed": [total_duplicates_cleaned],
+        "Data_Quality_Score": [round(data_quality_score, 4)]
+    })
+
+    try:
+        from db_connection import get_engine
+        engine = get_engine()
+        
+        audit_data.to_sql('Fact_Audit', con=engine, if_exists='append', index=False)
+        print(f"- Audit: Pipeline health data saved to SQL (Fact_Audit) successfully.")
+    except Exception as e:
+        print(f"- Error saving audit to SQL: {e}")
     
 if __name__ == "__main__":  
     include_stocks_master = "--stocks-master" in sys.argv

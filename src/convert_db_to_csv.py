@@ -3,11 +3,7 @@ import pyodbc
 import os
 from dotenv import load_dotenv
 from prefect import flow, task
-
-load_dotenv()
-
-SERVER = os.getenv('SQL_SERVER')
-DATABASE = os.getenv('SQL_DATABASE')
+from db_connection import get_connection
 
 TABLES = os.getenv('SQL_TABLES').split(',')
 
@@ -17,12 +13,7 @@ parent_dir = os.path.dirname(base_dir)
 output_dir = os.path.join(parent_dir, "data", "gold")
 
 def extract_table(table): 
-    conn = pyodbc.connect(
-        f'DRIVER={{ODBC Driver 17 for SQL Server}};'
-        f'SERVER={SERVER};'
-        f'DATABASE={DATABASE};'
-        f'Trusted_Connection=yes;'
-    )
+    conn = get_connection()
 
     query = f"SELECT * FROM {table}"
     df = pd.read_sql(query, conn)
@@ -48,4 +39,3 @@ def export_sql_to_csv():
 
 if __name__ == "__main__":
     export_sql_to_csv()
-

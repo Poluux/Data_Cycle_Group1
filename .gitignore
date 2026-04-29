@@ -5,6 +5,10 @@
 __pycache__/
 *.pyc
 **/.env
+**/.env.local
 
 logs/*
 !logs/.gitkeep
+
+# Folder created automatically by Docker Volume
+Aquila_Alpha_Platform/

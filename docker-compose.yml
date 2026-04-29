@@ -1,0 +1,106 @@
+services:
+
+  sqlserver:
+    build: ./sqlserver
+    environment:
+      SA_PASSWORD: ${SQL_PASSWORD}
+      ACCEPT_EULA: "Y"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqldata:/var/opt/mssql
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        /opt/mssql/bin/sqlservr &
+        echo "Waiting for SQL Server to start..."
+        for i in $(seq 1 30); do
+          /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$SA_PASSWORD" -Q "SELECT 1" -No 2>/dev/null && break
+          echo "Attempt $i failed, retrying in 5s..."
+          sleep 5
+        done
+        /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "$$SA_PASSWORD" -i /init.sql -No
+        wait
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "/opt/mssql-tools18/bin/sqlcmd",
+          "-S",
+          "localhost",
+          "-U",
+          "sa",
+          "-P",
+          "${SQL_PASSWORD}",
+          "-Q",
+          "SELECT 1",
+          "-No",
+        ]
+      interval: 10s
+      retries: 10
+      start_period: 45s
+
+  prefect-server:
+    image: prefecthq/prefect:3-latest
+    command: prefect server start --host 0.0.0.0
+    ports:
+      - "4200:4200"
+
+  # Phase 1 — Launch manually once
+  pipeline-init:
+    build: .
+    command: python src/pipeline.py --period 10y --stocks-master
+    environment:
+      RUNNING_IN_DOCKER: "true"
+      SQL_SERVER: sqlserver
+      SQL_PASSWORD: ${SQL_PASSWORD}
+      SQL_DATABASE: ${SQL_DATABASE}
+      SQL_TABLES: ${SQL_TABLES}
+      KEY: ${KEY}
+      PREFECT_API_URL: http://prefect-server:4200/api
+      KNIME_API_ID: ${KNIME_API_ID}
+      KNIME_API_PASSWORD: ${KNIME_API_PASSWORD}
+    volumes:
+      - ./data:/app/data
+      - ./reports:/app/reports
+      - ./config:/app/config
+      - ./Aquila_Alpha_Platform/Workspace_Advanced/Portfolio_Risk_Analytics:/app/reports
+      - ./Aquila_Alpha_Platform/Workspace_Free:/app/dummy_free
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      prefect-server:
+        condition: service_started
+    profiles: [ "init" ] # Not launched by docker compose up
+
+  # Phase 2 — Scheduling each day launch
+  pipeline-serve:
+    build: .
+    command: python src/pipeline.py --serve --cron "0 22 * * 1-5" --timezone
+      "America/Los_Angeles"
+    environment:
+      RUNNING_IN_DOCKER: "true"
+      SQL_SERVER: sqlserver
+      SQL_PASSWORD: ${SQL_PASSWORD}
+      SQL_DATABASE: ${SQL_DATABASE}
+      SQL_TABLES: ${SQL_TABLES}
+      KEY: ${KEY}
+      PREFECT_API_URL: http://prefect-server:4200/api
+      KNIME_API_ID: ${KNIME_API_ID}
+      KNIME_API_PASSWORD: ${KNIME_API_PASSWORD}
+    volumes:
+      - ./data:/app/data
+      - ./reports:/app/reports
+      - ./config:/app/config
+      - ./Aquila_Alpha_Platform/Workspace_Advanced/Portfolio_Risk_Analytics:/app/reports
+      - ./Aquila_Alpha_Platform/Workspace_Free:/app/dummy_free
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      prefect-server:
+        condition: service_started
+    profiles: [ "serve" ] # Not launched by docker compose up
+
+volumes:
+  sqldata:

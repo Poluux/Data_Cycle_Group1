@@ -64,7 +64,7 @@ def process_stocks_master():
     
     print(f"- stocks_master: processed data saved in {silver_path}")
     
-def process_price_history():
+def process_price_history(full_run=False):
     print("Process price_history data of each ticker")
     silver_path = silver_dir/'price_history'
     silver_path.mkdir(parents=True, exist_ok=True)
@@ -81,128 +81,131 @@ def process_price_history():
     today_date = datetime.datetime.now(ny_tz).strftime('%Y-%m-%d')
     
     # Process all data if Silver is empty, if else, only process today's data. 
-    if len(silver_files) == 0:
+    if len(silver_files) == 0 or full_run:
         print("- price_history: Silver is empty. Running full load...")
-        files = list((bronze_dir / 'price_history').rglob('*.csv'))
+        files = list((bronze_dir / 'price_history').rglob(f'*_{today_date}.csv'))
     else:
         files_today = list((bronze_dir / 'price_history').rglob(f'*_{today_date}.csv'))
         files = [f for f in files_today if 'historical' not in f.name]
     
-    if not files:
-        print(f"- price_history: no files found in Bronze to process.")
-        return
+    missing_days_corrected = 0
+    total_duplicates_cleaned = 0
+    total_final_rows = 0
     
     # Concatenate the info of each ticker to a single dataframe
-    print(f'Processing {len(files)} price_history files from Bronze:')
-    for i, f in enumerate(files):
-        if i < 9:
-            print(f"  - {f.name}")
-        elif i == 9:
-            print(f"  - ... and {len(files) - 9} more files.")
-            break
-
-    all_dfs = []
-    for file in files:
-        df_temp = pd.read_csv(file)
-        all_dfs.append(df_temp)
-    df = pd.concat(all_dfs, ignore_index=True)
-    
-    df = decrypt_table(df)
-    
-    #  Drop duplicates, sort, date to datetime, numerical fields to numeric, string formatting, delete rows with null in 'close'...
-    df.columns = df.columns.str.lower().str.replace(' ', '_')
-    
-    if date_col in df.columns:
-        temp_date = pd.to_datetime(df[date_col], utc=True)
-        
-        df[date_col] = temp_date.dt.date
-
-    if ticker_col in df.columns:
-        df[ticker_col] = df[ticker_col].astype(str).str.upper().str.strip()
-        
-    cols_to_convert = [c for c in numeric_cols if c in df.columns]
-    for col in cols_to_convert:
-        df[col] = pd.to_numeric(df[col], errors='coerce')
-    
-    if 'dividends' in df.columns:
-        df['has_dividend'] = df['dividends'] > 0
-    
-    if 'stock_splits' in df.columns:
-        df['has_split'] = df['stock_splits'] > 0
-    
-    # Additional metrics: intraday volatility, session change, session change percentage
-    if set(['high', 'low', 'open', 'close']).issubset(df.columns):
-        df['intraday_volatility'] = df['high'] - df['low']
-        df['session_change'] = df['close'] - df['open']
-        df['session_change_pct'] = np.where(df['open'] != 0, (df['session_change'] / df['open']) * 100, 0.0)
-    
-    initial_rows_before_nulls = len(df)
-    
-    if close_col in df.columns:
-        df = df.dropna(subset=[close_col])
-    
-    missing_days_corrected = initial_rows_before_nulls - len(df)
-        
-    if date_col in df.columns and ticker_col in df.columns:    
-        df = df.drop_duplicates(subset=[ticker_col, date_col], keep='last').copy()
-        df = df.sort_values(by=[ticker_col, date_col], ascending=[True, True])
+    if not files:
+        print(f"- price_history: no files found in Bronze to process.")
     else:
-        print(f"Warning: columns {date_col} or {ticker_col} not found")
-    
-    # Save data for each ticker. Use parquet for better performance.
-    processed_tickers = df[ticker_col].unique()
+        print(f'Processing {len(files)} price_history files from Bronze:')
+        for i, f in enumerate(files):
+            if i < 9:
+                print(f"  - {f.name}")
+            elif i == 9:
+                print(f"  - ... and {len(files) - 9} more files.")
+                break
 
-    total_new_rows_saved = 0
-    total_duplicates_cleaned = 0
-    for ticker in processed_tickers:
-        df_new_data = df[df[ticker_col] == ticker]
+        all_dfs = []
+        for file in files:
+            df_temp = pd.read_csv(file)
+            all_dfs.append(df_temp)
+        df = pd.concat(all_dfs, ignore_index=True)
         
-        file_name = f"clean_price_history_{ticker}.parquet"
-        save_path = silver_path / file_name
+        df = decrypt_table(df)
         
-        initial_rows = 0
+        #  Drop duplicates, sort, date to datetime, numerical fields to numeric, string formatting, delete rows with null in 'close'...
+        df.columns = df.columns.str.lower().str.replace(' ', '_')
         
-        # If the file already exists, load it to combine with the new data
-        if save_path.exists():
-            df_old_history = pd.read_parquet(save_path)
-            df_old_history = decrypt_table(df_old_history)
-            df_old_history[date_col] = pd.to_datetime(df_old_history[date_col], utc=True).dt.date
-            initial_rows = len(df_old_history)
+        if date_col in df.columns:
+            temp_date = pd.to_datetime(df[date_col], utc=True)
+            
+            df[date_col] = temp_date.dt.date
 
-            df_combined = pd.concat([df_old_history, df_new_data], ignore_index=True)
-
-            rows_before_cleaning = len(df_combined)
-
-            # Delete duplicates if there are any today
-            df_combined = df_combined.drop_duplicates(subset=[ticker_col, date_col], keep='last')
-            df_combined = df_combined.sort_values(by=[ticker_col, date_col])
-
-            duplicates_cleaned = rows_before_cleaning - len(df_combined)
+        if ticker_col in df.columns:
+            df[ticker_col] = df[ticker_col].astype(str).str.upper().str.strip()
+            
+        cols_to_convert = [c for c in numeric_cols if c in df.columns]
+        for col in cols_to_convert:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        if 'dividends' in df.columns:
+            df['has_dividend'] = df['dividends'] > 0
+        
+        if 'stock_splits' in df.columns:
+            df['has_split'] = df['stock_splits'] > 0
+        
+        # Additional metrics: intraday volatility, session change, session change percentage
+        if set(['high', 'low', 'open', 'close']).issubset(df.columns):
+            df['intraday_volatility'] = df['high'] - df['low']
+            df['session_change'] = df['close'] - df['open']
+            df['session_change_pct'] = np.where(df['open'] != 0, (df['session_change'] / df['open']) * 100, 0.0)
+        
+        initial_rows_before_nulls = len(df)
+        
+        if close_col in df.columns:
+            df = df.dropna(subset=[close_col])
+        
+        missing_days_corrected = initial_rows_before_nulls - len(df)
+            
+        if date_col in df.columns and ticker_col in df.columns:    
+            df = df.drop_duplicates(subset=[ticker_col, date_col], keep='last').copy()
+            df = df.sort_values(by=[ticker_col, date_col], ascending=[True, True])
         else:
-            df_combined = df_new_data
-            duplicates_cleaned = 0
+            print(f"Warning: columns {date_col} or {ticker_col} not found")
         
-        total_duplicates_cleaned += duplicates_cleaned
-        
-        added_rows = len(df_combined) - initial_rows
-        
-        if added_rows > 0:
-            df_combined = encrypt_table(df_combined.copy())
-            df_combined.to_parquet(save_path, index=False)
-            print(f"- {ticker}: {added_rows} new rows added, {duplicates_cleaned} duplicates cleaned. (Total: {len(df_combined)})")
+        # Save data for each ticker. Use parquet for better performance.
+        processed_tickers = df[ticker_col].unique()
 
-            total_new_rows_saved += added_rows
-        else:
-            print(f"- {ticker}: no new data found, skipping Silver update. ({duplicates_cleaned} duplicates cleaned)")
+        total_new_rows_saved = 0
+        total_duplicates_cleaned = 0
+        for ticker in processed_tickers:
+            df_new_data = df[df[ticker_col] == ticker]
+            
+            file_name = f"clean_price_history_{ticker}.parquet"
+            save_path = silver_path / file_name
+            
+            initial_rows = 0
+            
+            # If the file already exists, load it to combine with the new data
+            if save_path.exists():
+                df_old_history = pd.read_parquet(save_path)
+                df_old_history = decrypt_table(df_old_history)
+                df_old_history[date_col] = pd.to_datetime(df_old_history[date_col], utc=True).dt.date
+                initial_rows = len(df_old_history)
+
+                df_combined = pd.concat([df_old_history, df_new_data], ignore_index=True)
+
+                rows_before_cleaning = len(df_combined)
+
+                # Delete duplicates if there are any today
+                df_combined = df_combined.drop_duplicates(subset=[ticker_col, date_col], keep='last')
+                df_combined = df_combined.sort_values(by=[ticker_col, date_col])
+
+                duplicates_cleaned = rows_before_cleaning - len(df_combined)
+            else:
+                df_combined = df_new_data
+                duplicates_cleaned = 0
+            
+            total_duplicates_cleaned += duplicates_cleaned
+            
+            added_rows = len(df_combined) - initial_rows
+            
+            if added_rows > 0:
+                df_combined = encrypt_table(df_combined.copy())
+                df_combined.to_parquet(save_path, index=False)
+                print(f"- {ticker}: {added_rows} new rows added, {duplicates_cleaned} duplicates cleaned. (Total: {len(df_combined)})")
+
+                total_new_rows_saved += added_rows
+            else:
+                print(f"- {ticker}: no new data found, skipping Silver update. ({duplicates_cleaned} duplicates cleaned)")
+            
+        print(f"- price_history: Process completed. {total_new_rows_saved} total new rows saved to Silver. (Bronze rows read: {len(df)})")
         
-    print(f"- price_history: Process completed. {total_new_rows_saved} total new rows saved to Silver. (Bronze rows read: {len(df)})")
-    
-    total_final_rows = len(df)
+        total_final_rows = len(df)
     if total_final_rows > 0:
         penalization = (missing_days_corrected + total_duplicates_cleaned) / (total_final_rows + missing_days_corrected + total_duplicates_cleaned)
         data_quality_score = max(0.0, 1.0 - penalization - api_error_rate)
     else:
-        data_quality_score = 1.0
+        data_quality_score = max(0.0, 1.0 - api_error_rate)
 
     audit_data = pd.DataFrame({
         "Date": [today_date],

@@ -57,6 +57,7 @@ services:
       SQL_PASSWORD: ${SQL_PASSWORD}
       SQL_DATABASE: ${SQL_DATABASE}
       SQL_TABLES: ${SQL_TABLES}
+      SQL_TABLES_TO_MERGE: ${SQL_TABLES_TO_MERGE}
       KEY: ${KEY}
       PREFECT_API_URL: http://prefect-server:4200/api
       KNIME_API_ID: ${KNIME_API_ID}

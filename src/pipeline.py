@@ -27,8 +27,8 @@ def task_process_stocks_master():
     process_stocks_master()
 
 @task(name="Silver - Price History", retries=1, retry_delay_seconds=30)
-def task_process_price_history():
-    process_price_history()
+def task_process_price_history(full_run: bool = False):
+    process_price_history(full_run)
     
 @task(name="Gold - DimDate & DimTicker", retries=1, retry_delay_seconds=30)
 def task_gold_dims(include_stocks_master: bool):
@@ -71,7 +71,7 @@ def pipeline(period: str = "1d", include_stocks_master: bool = False):
     # Silver - launches automatically after Bronze
     if include_stocks_master:
         task_process_stocks_master()
-    task_process_price_history()
+    task_process_price_history(full_run)
     
     task_knime_sendData_ToAPI()
     
